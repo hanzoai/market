@@ -18,9 +18,10 @@ export function matchesExactTokens(
   if (!text) return false
   const textTokens = tokenize(text)
   if (textTokens.length === 0) return false
+  console.log({ queryTokens, textTokens })
   // Require at least one token to prefix-match, allowing vector similarity to determine relevance
   return queryTokens.some((queryToken) =>
-    textTokens.some((textToken) => textToken.startsWith(queryToken)),
+    textTokens.some((textToken) => textToken.includes(queryToken)),
   )
 }
 
