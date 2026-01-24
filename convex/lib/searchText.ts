@@ -19,7 +19,8 @@ export function matchesExactTokens(
   const textTokens = tokenize(text)
   if (textTokens.length === 0) return false
   const textSet = new Set(textTokens)
-  return queryTokens.every((token) => textSet.has(token))
+  // Require at least one token to match, allowing vector similarity to determine relevance
+  return queryTokens.some((token) => textSet.has(token))
 }
 
 export const __test = { normalize, tokenize, matchesExactTokens }
