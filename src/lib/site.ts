@@ -1,16 +1,23 @@
+import { getBrand } from '../brand/loader'
+
 export type SiteMode = 'skills' | 'personas'
 
-const DEFAULT_BOTHUB_SITE_URL = 'https://hub.hanzo.bot'
 const DEFAULT_PERSONAHUB_SITE_URL = 'https://personas.hanzo.ai'
 const DEFAULT_PERSONAHUB_HOST = 'personas.hanzo.ai'
-const LEGACY_HOSTS = new Set(['clawhub.ai', 'www.clawhub.ai', 'auth.clawhub.com', 'clawdhub.ai'])
+const LEGACY_HOSTS = new Set([
+  'hub.hanzo.bot',
+  'clawhub.ai',
+  'www.clawhub.ai',
+  'auth.clawhub.com',
+  'clawdhub.ai',
+])
 
-export function normalizeBotHubSiteOrigin(value?: string | null) {
+export function normalizeMarketSiteOrigin(value?: string | null) {
   if (!value) return null
   try {
     const url = new URL(value)
     if (LEGACY_HOSTS.has(url.hostname.toLowerCase())) {
-      return DEFAULT_BOTHUB_SITE_URL
+      return getBrand().url
     }
     return url.origin
   } catch {
@@ -18,8 +25,8 @@ export function normalizeBotHubSiteOrigin(value?: string | null) {
   }
 }
 
-export function getBotHubSiteUrl() {
-  return normalizeBotHubSiteOrigin(import.meta.env.VITE_SITE_URL) ?? DEFAULT_BOTHUB_SITE_URL
+export function getMarketSiteUrl() {
+  return normalizeMarketSiteOrigin(import.meta.env.VITE_SITE_URL) ?? getBrand().url
 }
 
 export function getPersonaHubSiteUrl() {
@@ -83,14 +90,16 @@ export function getSiteMode(): SiteMode {
   return 'skills'
 }
 
-export function getSiteName(_mode?: SiteMode) {
-  return 'Bot Hub'
+export function getSiteName(mode?: SiteMode) {
+  return mode === 'personas' ? 'PersonaHub' : getBrand().title
 }
 
-export function getSiteDescription(_mode?: SiteMode) {
-  return 'Bot Hub — skills, personas, and agents in one place.'
+export function getSiteDescription(mode?: SiteMode) {
+  return mode === 'personas'
+    ? 'PersonaHub — the home for PERSONA.md bundles and personal system lore.'
+    : getBrand().brand.description
 }
 
 export function getSiteUrlForMode(mode: SiteMode = getSiteMode()) {
-  return mode === 'personas' ? getPersonaHubSiteUrl() : getBotHubSiteUrl()
+  return mode === 'personas' ? getPersonaHubSiteUrl() : getMarketSiteUrl()
 }

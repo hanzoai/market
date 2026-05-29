@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Seed the Bot Hub PostgreSQL database with skills and personas.
+ * Seed the Hanzo Market PostgreSQL database with skills and personas.
  *
  * Run from the api/ directory (needs postgres driver):
  *   cd api && DATABASE_URL=... node ../scripts/seed-db.mjs
@@ -281,7 +281,7 @@ async function seedIntegrations(userId) {
 }
 
 async function main() {
-  console.log('Seeding Bot Hub database...')
+  console.log('Seeding Hanzo Market database...')
   const userId = await ensureSeedUser()
   console.log(`Seed user: ${userId}`)
 

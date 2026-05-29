@@ -1,6 +1,6 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-// Bot Hub collections migration — maps the Drizzle schema to Base collections.
+// Hanzo Market collections migration — maps the Drizzle schema to Base collections.
 // Run: ./base serve --migrationsDir ./hz_migrations
 
 migrate((app) => {

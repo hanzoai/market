@@ -1,5 +1,5 @@
 ---
-summary: 'Auth overview: GitHub OAuth (web) + API tokens (CLI).'
+summary: 'Auth overview: Hanzo IAM OIDC (web) + API tokens (CLI).'
 read_when:
   - Working on login/token flows
   - Debugging 401s
@@ -7,14 +7,14 @@ read_when:
 
 # Auth
 
-## Web auth (GitHub OAuth)
+## Web auth (Hanzo IAM)
 
-- Convex Auth + GitHub OAuth App.
-- GitHub is the only supported login provider.
+- Hanzo IAM is the only supported identity provider (OIDC).
 - Env vars:
-  - `AUTH_GITHUB_ID`
-  - `AUTH_GITHUB_SECRET`
-  - `CONVEX_SITE_URL` (used by auth config)
+  - `IAM_URL` (default `https://hanzo.id`)
+  - `IAM_CLIENT_ID`
+  - `IAM_CLIENT_SECRET`
+  - `SITE_URL` (used by auth callback)
 
 Local setup steps are in the repo root `README.md`.
 
@@ -24,11 +24,11 @@ The CLI uses a long-lived API token (Bearer token) for publish/sync/delete.
 
 ### Browser flow (default)
 
-`bothub login` does:
+`market login` does:
 
 1. Starts a loopback HTTP server on `127.0.0.1` (random port).
 2. Opens `<site>/cli/auth?redirect_uri=http://127.0.0.1:<port>/callback&state=...`.
-3. Web UI requires GitHub login, then creates a token and redirects back to the loopback server.
+3. Web UI requires Hanzo IAM login, then creates a token and redirects back to the loopback server.
 4. CLI stores the token in the global config file.
 
 ### Headless flow
@@ -36,18 +36,18 @@ The CLI uses a long-lived API token (Bearer token) for publish/sync/delete.
 Create a token in the web UI (Settings → API tokens) and paste it:
 
 ```bash
-bothub login --token clh_...
+market login --token clh_...
 ```
 
 ### Token storage
 
 Default global config path:
 
-- macOS: `~/Library/Application Support/bothub/config.json`
+- macOS: `~/Library/Application Support/market/config.json`
 
 Override:
 
-- `BOTHUB_CONFIG_PATH=/path/to/config.json` (legacy `CLAWDHUB_CONFIG_PATH`)
+- `MARKET_CONFIG_PATH=/path/to/config.json` (legacy `BOTHUB_CONFIG_PATH`, `CLAWDHUB_CONFIG_PATH`)
 
 ### Revocation
 

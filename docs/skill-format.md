@@ -18,16 +18,16 @@ Required:
 Optional:
 
 - any supporting *text-based* files (see “Allowed files”)
-- `.bothubignore` (ignore patterns for publish/sync, legacy `.bothubignore`)
+- `.marketignore` (ignore patterns for publish/sync, legacy `.bothubignore`)
 - `.gitignore` (also honored)
 
 Local install metadata (written by the CLI):
 
-- `<skill>/.bothub/origin.json` (legacy `.bothub`)
+- `<skill>/.market/origin.json` (legacy `.bothub`)
 
 Workdir install state (written by the CLI):
 
-- `<workdir>/.bothub/lock.json` (legacy `.bothub`)
+- `<workdir>/.market/lock.json` (legacy `.bothub`)
 
 ## `SKILL.md`
 
@@ -106,7 +106,7 @@ Supported install kinds: `brew`, `node`, `go`, `uv`.
 
 ### Why this matters
 
-Bot Hub's security analysis checks that what your skill declares matches what it actually does. If your code references `TODOIST_API_KEY` but your frontmatter doesn't declare it under `requires.env`, the analysis will flag a metadata mismatch. Keeping declarations accurate helps your skill pass review and helps users understand what they're installing.
+Hanzo Market's security analysis checks that what your skill declares matches what it actually does. If your code references `TODOIST_API_KEY` but your frontmatter doesn't declare it under `requires.env`, the analysis will flag a metadata mismatch. Keeping declarations accurate helps your skill pass review and helps users understand what they're installing.
 
 ### Example: complete frontmatter
 

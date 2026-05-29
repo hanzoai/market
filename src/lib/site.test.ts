@@ -1,11 +1,22 @@
 /* @vitest-environment node */
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import hanzoPreset from '../brand/presets/hanzo.json'
+import { resetBrandCacheForTests } from '../brand/loader'
+
+vi.mock('../brand/loader', async () => {
+  const mod = await vi.importActual<typeof import('../brand/loader')>('../brand/loader')
+  return {
+    ...mod,
+    getBrand: () => hanzoPreset,
+  }
+})
 
 import {
   detectSiteMode,
   detectSiteModeFromUrl,
-  getBotHubSiteUrl,
+  getMarketSiteUrl,
   getPersonaHubHost,
   getPersonaHubSiteUrl,
   getSiteDescription,
@@ -35,6 +46,10 @@ function withMetaEnv<T>(values: Record<string, string | undefined>, run: () => T
   }
 }
 
+beforeEach(() => {
+  resetBrandCacheForTests()
+})
+
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
@@ -42,15 +57,15 @@ afterEach(() => {
 
 describe('site helpers', () => {
   it('returns default and env configured site URLs', () => {
-    expect(getBotHubSiteUrl()).toBe('https://hub.hanzo.bot')
+    expect(getMarketSiteUrl()).toBe('https://hanzo.market')
     withMetaEnv({ VITE_SITE_URL: 'https://example.com' }, () => {
-      expect(getBotHubSiteUrl()).toBe('https://example.com')
+      expect(getMarketSiteUrl()).toBe('https://example.com')
+    })
+    withMetaEnv({ VITE_SITE_URL: 'https://hanzo.market' }, () => {
+      expect(getMarketSiteUrl()).toBe('https://hanzo.market')
     })
     withMetaEnv({ VITE_SITE_URL: 'https://hub.hanzo.bot' }, () => {
-      expect(getBotHubSiteUrl()).toBe('https://hub.hanzo.bot')
-    })
-    withMetaEnv({ VITE_SITE_URL: 'https://auth.hub.hanzo.bot' }, () => {
-      expect(getBotHubSiteUrl()).toBe('https://hub.hanzo.bot')
+      expect(getMarketSiteUrl()).toBe('https://hanzo.market')
     })
   })
 
@@ -85,11 +100,11 @@ describe('site helpers', () => {
       expect(getPersonaHubHost()).toBe('personas.example.com')
       expect(detectSiteMode('personas.example.com')).toBe('personas')
       expect(detectSiteMode('sub.personas.example.com')).toBe('personas')
-      expect(detectSiteMode('hub.hanzo.bot')).toBe('skills')
+      expect(detectSiteMode('hanzo.market')).toBe('skills')
 
       expect(detectSiteModeFromUrl('https://personas.example.com/x')).toBe('personas')
       expect(detectSiteModeFromUrl('personas.example.com')).toBe('personas')
-      expect(detectSiteModeFromUrl('https://hub.hanzo.bot')).toBe('skills')
+      expect(detectSiteModeFromUrl('https://hanzo.market')).toBe('skills')
     })
   })
 
@@ -124,13 +139,13 @@ describe('site helpers', () => {
   })
 
   it('derives site metadata from mode', () => {
-    expect(getSiteName('skills')).toBe('Bot Hub')
+    expect(getSiteName('skills')).toBe('Hanzo Market')
     expect(getSiteName('personas')).toBe('PersonaHub')
 
-    expect(getSiteDescription('skills')).toContain('Bot Hub')
+    expect(getSiteDescription('skills')).toContain('Hanzo Market')
     expect(getSiteDescription('personas')).toContain('PersonaHub')
 
-    expect(getSiteUrlForMode('skills')).toBe('https://hub.hanzo.bot')
+    expect(getSiteUrlForMode('skills')).toBe('https://hanzo.market')
     expect(getSiteUrlForMode('personas')).toBe('https://personas.hanzo.ai')
   })
 })

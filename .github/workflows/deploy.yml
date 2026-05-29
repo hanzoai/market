@@ -1,4 +1,4 @@
-name: Build & Deploy Bot Hub
+name: Build & Deploy Hanzo Market
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: ghcr.io/hanzoai/bot-hub
+  IMAGE: ghcr.io/hanzoai/market
 
 jobs:
   build-push:
@@ -45,5 +45,5 @@ jobs:
 
       - name: Deploy to K8s
         run: |
-          kubectl rollout restart deployment/bot-hub -n hanzo
-          kubectl rollout status deployment/bot-hub -n hanzo --timeout=120s
+          kubectl rollout restart deployment/market -n market
+          kubectl rollout status deployment/market -n market --timeout=120s

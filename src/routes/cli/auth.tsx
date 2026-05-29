@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuthContext } from '../../lib/AuthContext'
 import { tokensApi } from '../../lib/api'
-import { getBotHubSiteUrl, normalizeBotHubSiteOrigin } from '../../lib/site'
+import { getMarketSiteUrl, normalizeMarketSiteOrigin } from '../../lib/site'
 
 export const Route = createFileRoute('/cli/auth')({
   component: CliAuth,
@@ -28,9 +28,9 @@ function CliAuth() {
   const safeRedirect = useMemo(() => isAllowedRedirectUri(redirectUri), [redirectUri])
   const registry = useMemo(() => {
     if (typeof window !== 'undefined') {
-      return normalizeBotHubSiteOrigin(window.location.origin) ?? getBotHubSiteUrl()
+      return normalizeMarketSiteOrigin(window.location.origin) ?? getMarketSiteUrl()
     }
-    return getBotHubSiteUrl()
+    return getMarketSiteUrl()
   }, [])
 
   useEffect(() => {

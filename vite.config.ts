@@ -1,5 +1,6 @@
+import { copyFileSync, existsSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve as resolvePath } from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import { devtools } from '@tanstack/devtools-vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
@@ -9,6 +10,23 @@ import { defineConfig } from 'vite'
 import viteTsConfigPaths from 'vite-tsconfig-paths'
 
 const require = createRequire(import.meta.url)
+
+const BRAND_ID = (process.env.BRAND_ID ?? 'generic').trim() || 'generic'
+
+function copyBrandPreset() {
+  const root = dirname(new URL(import.meta.url).pathname)
+  const presetPath = resolvePath(root, 'src/brand/presets', `${BRAND_ID}.json`)
+  if (!existsSync(presetPath) || !statSync(presetPath).isFile()) {
+    throw new Error(
+      `BRAND_ID=${BRAND_ID} but src/brand/presets/${BRAND_ID}.json not found. ` +
+        `Create the preset or set BRAND_ID to one of the available presets.`,
+    )
+  }
+  const dest = resolvePath(root, 'public/brand.json')
+  copyFileSync(presetPath, dest)
+}
+
+copyBrandPreset()
 
 const convexEntry = require.resolve('convex')
 const convexRoot = dirname(dirname(dirname(convexEntry)))
@@ -41,6 +59,9 @@ function handleRollupWarning(
 }
 
 const config = defineConfig({
+  define: {
+    __BUILD_BRAND_ID__: JSON.stringify(BRAND_ID),
+  },
   resolve: {
     dedupe: ['convex', '@convex-dev/auth', 'react', 'react-dom'],
     alias: {

@@ -1,0 +1,44 @@
+{
+  "brandId": "zoo",
+  "appId": "market",
+  "brand": {
+    "name": "zoo",
+    "title": "Zoo Market",
+    "shortName": "Zoo Market",
+    "description": "Zoo Market — open AI research skills, personas, and agents.",
+    "legalEntity": "Zoo Labs Foundation",
+    "protocolName": "Zoo",
+    "copyrightHolder": "Zoo Labs Foundation",
+    "appDomain": "zoo.market",
+    "docsDomain": "docs.zoo.ngo",
+    "infoDomain": "zoo.ngo",
+    "helpUrl": "https://zoo.market/help",
+    "supportEmail": "support@zoo.ngo",
+    "twitter": "@zoo_labs",
+    "github": "https://github.com/zooai/market",
+    "primaryColor": "#3B82F6",
+    "defaultChainId": 200200,
+    "supportedChainIds": [200200]
+  },
+  "app": {
+    "id": "market",
+    "name": "Zoo Market",
+    "tagline": "Open AI research, shared.",
+    "description": "Zoo Market — open AI research skills, personas, and agents.",
+    "defaultSubdomain": ""
+  },
+  "title": "Zoo Market",
+  "domain": "zoo.market",
+  "url": "https://zoo.market",
+  "github": "https://github.com/zooai/market",
+  "chain": {
+    "id": 200200,
+    "name": "Zoo Mainnet",
+    "rpcUrl": "https://api.lux.network/mainnet/ext/bc/zoo/rpc",
+    "explorerUrl": "https://explore-zoo.lux.network"
+  },
+  "peers": [
+    { "id": "hanzo", "url": "https://hanzo.market", "appId": "market" },
+    { "id": "lux", "url": "https://lux.market", "appId": "market" }
+  ]
+}
