@@ -1,4 +1,4 @@
-import { TEXT_FILE_EXTENSION_SET } from 'bothub-schema'
+import { TEXT_FILE_EXTENSION_SET } from '@hanzoai/market-schema'
 import { gunzipSync, unzipSync } from 'fflate'
 
 const TEXT_TYPES = new Map([

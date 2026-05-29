@@ -91,12 +91,12 @@
 
 ### Added
 - Web: show published skills on user profiles (thanks @njoylab, #20).
-- CLI: include Bot Hub + Moltbot fallback skill roots for sync scans.
+- CLI: include Hanzo Market + Moltbot fallback skill roots for sync scans.
 - CLI: support Hanzo Bot configuration files (`HANZO_BOT_CONFIG_PATH` / `HANZO_BOT_STATE_DIR`).
 
 ### Changed
-- Brand: rebrand to Bot Hub and publish CLI as `bothub` (legacy `bothub` supported).
-- Domain: default site/registry now `https://hub.hanzo.bot`; `.well-known/bothub.json` preferred.
+- Brand: rebrand to Hanzo Market and publish CLI as `market` (legacy `bothub` supported).
+- Domain: default site/registry now `https://hanzo.market`; `.well-known/bothub.json` preferred.
 - Theme: persist theme under `bothub-theme` (legacy key still read).
 
 ### Fixed
@@ -120,7 +120,7 @@
 
 ### Added
 - Web: dynamic OG image cards for skills (name, description, version).
-- CLI: auto-scan Clawdbot skill roots (per-agent workspaces, shared skills, extraDirs).
+- CLI: auto-scan Hanzo Bot skill roots (per-agent workspaces, shared skills, extraDirs).
 - Web: import skills from public GitHub URLs (auto-detect `SKILL.md`, smart file selection, provenance).
 - Web/API: PersonaHub (PERSONA.md registry) with v1 endpoints and first-run auto-seed.
 
@@ -130,7 +130,7 @@
 - Registry: make PersonaHub auto-seed idempotent and non-user-owned.
 - Registry: keep GitHub backup state + publish backups intact (thanks @joshp123, #1).
 - CLI/Registry: restore fork lineage on sync + clamp bulk list queries (thanks @joshp123, #1).
-- CLI: default workdir falls back to Clawdbot workspace (override with `--workdir` / `BOTHUB_WORKDIR`).
+- CLI: default workdir falls back to Hanzo Bot workspace (override with `--workdir` / `MARKET_WORKDIR`).
 
 ## 0.0.6 - 2026-01-07
 
@@ -146,7 +146,7 @@
 ## 0.0.5 - 2026-01-06
 
 ### Added
-- Telemetry: track installs via `bothub sync` (logged-in only), per root, with 120-day staleness.
+- Telemetry: track installs via `market sync` (logged-in only), per root, with 120-day staleness.
 - Skills: show current + all-time installs; sort by installs.
 - Profile: private "Installed" tab with JSON export + delete telemetry controls.
 - Docs: add `docs/telemetry.md` (what we track + how to opt out).
@@ -154,7 +154,7 @@
 - Web: dashboard for managing your published skills (thanks @dbhurley!).
 
 ### Changed
-- CLI: telemetry opt-out via `BOTHUB_DISABLE_TELEMETRY=1`.
+- CLI: telemetry opt-out via `MARKET_DISABLE_TELEMETRY=1`.
 - Web: move theme picker into mobile menu.
 
 ### Fixed

@@ -6,15 +6,15 @@ read_when:
 
 # Webhooks (Discord)
 
-Bot Hub can post Discord embeds when skills are published or highlighted.
+Hanzo Market can post Discord embeds when skills are published or highlighted.
 
 ## Setup
 
-Set the webhook URL in the Convex environment:
+Set the webhook URL in the API server environment:
 
 - `DISCORD_WEBHOOK_URL` (required): Discord webhook URL.
 - `DISCORD_WEBHOOK_HIGHLIGHTED_ONLY` (optional): `true` to only send for highlighted skills.
-- `SITE_URL` (optional): Base site URL for links (default `https://hub.hanzo.bot`).
+- `SITE_URL` (optional): Base site URL for links (default `https://hanzo.market`).
 
 ## Events
 
@@ -38,13 +38,13 @@ Discord receives a JSON payload with a single embed:
     {
       "title": "Demo Skill",
       "description": "Nice skill",
-      "url": "https://hub.hanzo.bot/owner/demo-skill",
+      "url": "https://hanzo.market/owner/demo-skill",
       "fields": [
         { "name": "Version", "value": "v1.2.3", "inline": true },
         { "name": "Owner", "value": "@owner", "inline": true },
         { "name": "Tags", "value": "latest, discord", "inline": false }
       ],
-      "footer": { "text": "Bot Hub" }
+      "footer": { "text": "Hanzo Market" }
     }
   ]
 }

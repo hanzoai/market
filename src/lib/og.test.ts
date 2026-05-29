@@ -1,4 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import hanzoPreset from '../brand/presets/hanzo.json'
+
+vi.mock('../brand/loader', async () => {
+  const mod = await vi.importActual<typeof import('../brand/loader')>('../brand/loader')
+  return {
+    ...mod,
+    getBrand: () => hanzoPreset,
+  }
+})
+
 import { buildSkillMeta, buildPersonaMeta, fetchSkillMeta, fetchPersonaMeta } from './og'
 
 describe('og helpers', () => {
@@ -14,7 +24,7 @@ describe('og helpers', () => {
       summary: 'Forecasts for your area.',
       version: '1.2.3',
     })
-    expect(meta.title).toBe('Weather — Bot Hub')
+    expect(meta.title).toBe('Weather — Hanzo Market')
     expect(meta.description).toBe('Forecasts for your area.')
     expect(meta.url).toContain('/steipete/weather')
     expect(meta.owner).toBe('steipete')
@@ -48,8 +58,8 @@ describe('og helpers', () => {
 
   it('uses defaults when owner and summary are missing', () => {
     const meta = buildSkillMeta({ slug: 'parser' })
-    expect(meta.title).toBe('parser — Bot Hub')
-    expect(meta.description).toMatch(/Bot Hub — a fast skill registry/i)
+    expect(meta.title).toBe('parser — Hanzo Market')
+    expect(meta.description).toMatch(/Hanzo Market/i)
     expect(meta.url).toContain('/unknown/parser')
     expect(meta.owner).toBeNull()
     expect(meta.image).toContain('slug=parser')

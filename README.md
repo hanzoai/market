@@ -1,17 +1,16 @@
-# Bot Hub
+# Hanzo Market
 
 <p align="center">
-  <a href="https://github.com/hanzo-bot/bothub/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/hanzo-bot/bothub/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://discord.gg/clawd"><img src="https://img.shields.io/discord/1456350064065904867?label=Discord&logo=discord&logoColor=white&color=5865F2&style=for-the-badge" alt="Discord"></a>
+  <a href="https://github.com/hanzoai/market/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/hanzoai/market/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-Bot Hub is the **public skill registry for Clawdbot**: publish, version, and search text-based agent skills (a `SKILL.md` plus supporting files).
+Hanzo Market is the **public skill registry for Hanzo Bot**: publish, version, and search text-based agent skills (a `SKILL.md` plus supporting files).
 It’s designed for fast browsing + a CLI-friendly API, with moderation hooks and vector search.
 
 personas.hanzo.ai is the **PERSONA.md registry**: publish and share system lore the same way you publish skills.
 
-Live: `https://hub.hanzo.bot`
+Live: `https://hanzo.market`
 personas.hanzo.ai: `https://personas.hanzo.ai`
 
 ## What you can do with it
@@ -27,36 +26,36 @@ personas.hanzo.ai: `https://personas.hanzo.ai`
 
 - Entry point is host-based: `personas.hanzo.ai`.
 - On the personas.hanzo.ai host, the home page and nav default to personas.
-- On Bot Hub, personas live under `/personas`.
+- On Hanzo Market, personas live under `/personas`.
 - Persona bundles only accept `PERSONA.md` for now (no extra files).
 
 ## How it works (high level)
 
 - Web app: TanStack Start (React, Vite/Nitro).
-- Backend: Convex (DB + file storage + HTTP actions) + Convex Auth (GitHub OAuth).
-- Search: OpenAI embeddings (`text-embedding-3-small`) + Convex vector search.
-- API schema + routes: `packages/schema` (`bothub-schema`).
+- Backend: Hanzo Base (DB + file storage) + Hanzo IAM (OIDC auth).
+- Search: OpenAI embeddings (`text-embedding-3-small`) + vector search.
+- API schema + routes: `packages/schema` (`@hanzoai/market-schema`).
 
 ## CLI
 
 Common CLI flows:
 
-- Auth: `bothub login`, `bothub whoami`
-- Discover: `bothub search ...`, `bothub explore`
-- Manage local installs: `bothub install <slug>`, `bothub uninstall <slug>`, `bothub list`, `bothub update --all`
-- Inspect without installing: `bothub inspect <slug>`
-- Publish/sync: `bothub publish <path>`, `bothub sync`
+- Auth: `market login`, `market whoami`
+- Discover: `market search ...`, `market explore`
+- Manage local installs: `market install <slug>`, `market uninstall <slug>`, `market list`, `market update --all`
+- Inspect without installing: `market inspect <slug>`
+- Publish/sync: `market publish <path>`, `market sync`
 
 Docs: `docs/quickstart.md`, `docs/cli.md`.
 
 
 ## Telemetry
 
-Bot Hub tracks minimal **install telemetry** (to compute install counts) when you run `bothub sync` while logged in.
+Hanzo Market tracks minimal **install telemetry** (to compute install counts) when you run `market sync` while logged in.
 Disable via:
 
 ```bash
-export BOTHUB_DISABLE_TELEMETRY=1
+export MARKET_DISABLE_TELEMETRY=1
 ```
 
 Details: `docs/telemetry.md`.
@@ -64,13 +63,15 @@ Details: `docs/telemetry.md`.
 ## Repo layout
 
 - `src/` — TanStack Start app (routes, components, styles).
-- `convex/` — schema + queries/mutations/actions + HTTP API routes.
+- `api/` — Hono API server (talks to Hanzo Base via SDK).
+- `base/` — Hanzo Base collection migrations.
+- `packages/market/` — CLI source.
 - `packages/schema/` — shared API types/routes for the CLI and app.
 - `docs/spec.md` — product + implementation spec (good first read).
 
 ## Local dev
 
-Prereqs: Bun + Convex CLI.
+Prereqs: Bun.
 
 ```bash
 bun install
@@ -79,36 +80,35 @@ cp .env.local.example .env.local
 # terminal A: web app
 bun run dev
 
-# terminal B: Convex dev deployment
-bunx convex dev
+# terminal B: API server
+cd api && npm install && npm run dev
 ```
 
-## Auth (GitHub OAuth) setup
+## Auth (Hanzo IAM) setup
 
-Create a GitHub OAuth App, set `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`, then:
+Hanzo Market authenticates users via Hanzo IAM (OIDC). Set:
 
-```bash
-bunx auth --deployment-name <deployment> --web-server-url http://localhost:3000
 ```
-
-This writes `JWT_PRIVATE_KEY` + `JWKS` to the deployment and prints values for your local `.env.local`.
+IAM_URL=https://hanzo.id
+IAM_CLIENT_ID=app-market
+IAM_CLIENT_SECRET=...
+```
 
 ## Environment
 
-- `VITE_CONVEX_URL`: Convex deployment URL (`https://<deployment>.convex.cloud`).
-- `VITE_CONVEX_SITE_URL`: Convex site URL (`https://<deployment>.convex.site`).
+- `VITE_API_URL`: API base path (`/api` for same-origin, full URL otherwise).
+- `VITE_SITE_URL`: Web app URL (local: `http://localhost:3000`).
 - `VITE_PERSONAHUB_SITE_URL`: personas.hanzo.ai site URL (`https://personas.hanzo.ai`).
 - `VITE_PERSONAHUB_HOST`: personas.hanzo.ai host match (`personas.hanzo.ai`).
 - `VITE_SITE_MODE`: Optional override (`skills` or `personas`) for SSR builds.
-- `CONVEX_SITE_URL`: same as `VITE_CONVEX_SITE_URL` (auth + cookies).
+- `DATABASE_URL`: PostgreSQL connection string for the API server.
 - `SITE_URL`: App URL (local: `http://localhost:3000`).
-- `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET`: GitHub OAuth App.
-- `JWT_PRIVATE_KEY` / `JWKS`: Convex Auth keys.
+- `IAM_URL` / `IAM_CLIENT_ID` / `IAM_CLIENT_SECRET`: Hanzo IAM OIDC client.
 - `OPENAI_API_KEY`: embeddings for search + indexing.
 
 ## Nix plugins (nixmode skills)
 
-Bot Hub can store a nix-clawdbot plugin pointer in SKILL frontmatter so the registry knows which
+Hanzo Market can store a nix-clawdbot plugin pointer in SKILL frontmatter so the registry knows which
 Nix package bundle to install. A nix plugin is different from a regular skill pack: it bundles the
 skill pack, the CLI binary, and its config flags/requirements together.
 
@@ -154,7 +154,7 @@ metadata: {"clawdbot":{"cliHelp":"padel --help\\nUsage: padel [command]\\n"}}
 
 ## Skill metadata
 
-Skills declare their runtime requirements (env vars, binaries, install specs) in the `SKILL.md` frontmatter. Bot Hub's security analysis checks these declarations against actual skill behavior.
+Skills declare their runtime requirements (env vars, binaries, install specs) in the `SKILL.md` frontmatter. Hanzo Market's security analysis checks these declarations against actual skill behavior.
 
 Full reference: [`docs/skill-format.md`](docs/skill-format.md#frontmatter-metadata)
 

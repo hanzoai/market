@@ -16,7 +16,7 @@ export const env = {
 
   // hanzo.id OAuth
   iamUrl: process.env.IAM_URL ?? 'https://hanzo.id',
-  iamClientId: process.env.IAM_CLIENT_ID ?? 'app-bothub',
+  iamClientId: process.env.IAM_CLIENT_ID ?? 'app-market',
   iamClientSecret: process.env.IAM_CLIENT_SECRET ?? '',
 
   // OpenAI embeddings
@@ -30,6 +30,6 @@ export const env = {
   discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL ?? '',
 
   // Public URL
-  publicUrl: process.env.PUBLIC_URL ?? 'https://hub.hanzo.bot',
-  apiUrl: process.env.API_URL ?? 'https://hub.hanzo.bot/api',
+  publicUrl: process.env.PUBLIC_URL ?? 'https://hanzo.market',
+  apiUrl: process.env.API_URL ?? 'https://hanzo.market/api',
 } as const

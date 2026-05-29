@@ -1,8 +1,8 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: bot-hub-ingress
-  namespace: hanzo
+  name: market-ingress
+  namespace: market
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/proxy-body-size: 64m
@@ -12,30 +12,30 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - hub.hanzo.bot
-      secretName: hub-hanzo-bot-tls
+        - hanzo.market
+      secretName: hanzo-market-tls
   rules:
-    - host: hub.hanzo.bot
+    - host: hanzo.market
       http:
         paths:
           - path: /api
             pathType: Prefix
             backend:
               service:
-                name: bot-hub
+                name: market
                 port:
                   number: 3001
           - path: /health
             pathType: Exact
             backend:
               service:
-                name: bot-hub
+                name: market
                 port:
                   number: 3001
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: bot-hub
+                name: market
                 port:
                   number: 80

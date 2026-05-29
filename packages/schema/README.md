@@ -1,3 +1,3 @@
-# bothub-schema
+# @hanzoai/market-schema
 
-Shared runtime schemas (ArkType) for Bot Hub.
+Shared runtime schemas (ArkType) for Hanzo Market.
