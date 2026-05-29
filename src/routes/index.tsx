@@ -9,6 +9,7 @@ import { PersonaStatsTripletLine } from '../components/PersonaStats'
 import { UserBadge } from '../components/UserBadge'
 import { getSkillBadges } from '../lib/badges'
 import type { PublicPersona } from '../lib/publicUser'
+import { getBrand } from '../brand/loader'
 
 export const Route = createFileRoute('/')({
   component: Home,
@@ -26,12 +27,13 @@ function Home() {
 }
 
 function HeroSection() {
+  const brand = getBrand()
   return (
     <section className="hero">
       <div className="hero-inner">
         <div className="hero-copy fade-up" data-delay="1">
           <span className="hero-badge">Skills. Personas. Agents.</span>
-          <h1 className="hero-title">Bot Hub, the registry for sharp agents.</h1>
+          <h1 className="hero-title">{brand.title}, {brand.app.tagline}</h1>
           <p className="hero-subtitle">
             Upload skills, share personas, and discover agents — versioned, searchable, no gatekeeping.
           </p>

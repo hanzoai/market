@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import type { ClawdisSkillMetadata } from 'bothub-schema'
+import type { ClawdisSkillMetadata } from '@hanzoai/market-schema'
 import { useEffect, useMemo, useState } from 'react'
 import { skillsApi } from '../lib/api'
 import type { Doc, Id } from '../lib/types'

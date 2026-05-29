@@ -1,4 +1,4 @@
-import type { SkillInstallSpec } from 'bothub-schema'
+import type { SkillInstallSpec } from '@hanzoai/market-schema'
 import type { Id } from '../lib/types'
 
 export function buildSkillHref(ownerHandle: string | null, ownerId: Id<'users'> | null, slug: string) {

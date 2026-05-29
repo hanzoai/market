@@ -1,4 +1,4 @@
-import { isTextContentType, TEXT_FILE_EXTENSION_SET } from 'bothub-schema'
+import { isTextContentType, TEXT_FILE_EXTENSION_SET } from '@hanzoai/market-schema'
 
 export async function uploadFile(uploadUrl: string, file: File) {
   const response = await fetch(uploadUrl, {

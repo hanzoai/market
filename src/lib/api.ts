@@ -1,4 +1,4 @@
-/** API client for the Bot Hub backend, replacing Convex hooks */
+/** API client for the market backend. */
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -43,7 +43,7 @@ export class ApiError extends Error {
 }
 
 // ─── Token storage ──────────────────────────────────────────────────────────
-const TOKEN_KEY = 'bothub.session.token'
+const TOKEN_KEY = 'market.session.token'
 
 export function getStoredToken(): string | null {
   if (typeof window === 'undefined') return null

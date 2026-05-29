@@ -7,9 +7,9 @@ read_when:
 
 # HTTP API
 
-Base URL: `https://hub.hanzo.bot` (default).
+Base URL: `https://hanzo.market` (default).
 
-All v1 paths are under `/api/v1/...` and implemented by Convex HTTP routes (`convex/http.ts`).
+All v1 paths are under `/api/v1/...` and implemented by the API server (Hono).
 Legacy `/api/...` and `/api/cli/...` remain for compatibility (see `DEPRECATIONS.md`).
 OpenAPI: `/api/v1/openapi.json`.
 
@@ -266,13 +266,12 @@ See `DEPRECATIONS.md` for removal plan.
 
 The CLI can discover registry/auth settings from the site:
 
-- `/.well-known/bothub.json` (JSON, preferred)
-- `/.well-known/bothub.json` (legacy)
+- `/.well-known/bothub.json` (JSON, preferred; legacy file name retained for older CLIs)
 
 Schema:
 
 ```json
-{ "apiBase": "https://hub.hanzo.bot", "authBase": "https://hub.hanzo.bot", "minCliVersion": "0.0.5" }
+{ "apiBase": "https://hanzo.market", "authBase": "https://hanzo.market", "minCliVersion": "0.0.5" }
 ```
 
-If you self-host, serve this file (or set `BOTHUB_REGISTRY` explicitly; legacy `CLAWDHUB_REGISTRY`).
+If you self-host, serve this file (or set `MARKET_REGISTRY` explicitly; legacy `BOTHUB_REGISTRY` / `CLAWDHUB_REGISTRY`).

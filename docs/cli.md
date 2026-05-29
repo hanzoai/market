@@ -7,41 +7,41 @@ read_when:
 
 # CLI
 
-CLI package: `packages/bothub/` (published as `bothub`, bin: `bothub`).
+CLI package: `packages/market/` (published as `@hanzoai/market`, bin: `market`).
 
 From this repo you can run it via the wrapper script:
 
 ```bash
-bun bothub --help
+bun market --help
 ```
 
 ## Global flags
 
-- `--workdir <dir>`: working directory (default: cwd; falls back to Clawdbot workspace if configured)
+- `--workdir <dir>`: working directory (default: cwd; falls back to Hanzo Bot workspace if configured)
 - `--dir <dir>`: install dir under workdir (default: `skills`)
-- `--site <url>`: base URL for browser login (default: `https://hub.hanzo.bot`)
-- `--registry <url>`: API base URL (default: discovered, else `https://hub.hanzo.bot`)
+- `--site <url>`: base URL for browser login (default: `https://hanzo.market`)
+- `--registry <url>`: API base URL (default: discovered, else `https://hanzo.market`)
 - `--no-input`: disable prompts
 
 Env equivalents:
 
-- `BOTHUB_SITE` (legacy `CLAWDHUB_SITE`)
-- `BOTHUB_REGISTRY` (legacy `CLAWDHUB_REGISTRY`)
-- `BOTHUB_WORKDIR` (legacy `CLAWDHUB_WORKDIR`)
+- `MARKET_SITE` (legacy `BOTHUB_SITE`, `CLAWDHUB_SITE`)
+- `MARKET_REGISTRY` (legacy `BOTHUB_REGISTRY`, `CLAWDHUB_REGISTRY`)
+- `MARKET_WORKDIR` (legacy `BOTHUB_WORKDIR`, `CLAWDHUB_WORKDIR`)
 
 ## Config file
 
 Stores your API token + cached registry URL.
 
-- macOS: `~/Library/Application Support/bothub/config.json`
-- override: `BOTHUB_CONFIG_PATH` (legacy `CLAWDHUB_CONFIG_PATH`)
+- macOS: `~/Library/Application Support/market/config.json`
+- override: `MARKET_CONFIG_PATH` (legacy `BOTHUB_CONFIG_PATH`, `CLAWDHUB_CONFIG_PATH`)
 
 ## Commands
 
 ### `login` / `auth login`
 
 - Default: opens browser to `<site>/cli/auth` and completes via loopback callback.
-- Headless: `bothub login --token clh_...`
+- Headless: `market login --token clh_...`
 
 ### `whoami`
 
@@ -83,8 +83,8 @@ Stores your API token + cached registry URL.
 - Downloads zip via `/api/v1/download`.
 - Extracts into `<workdir>/<dir>/<slug>`.
 - Writes:
-  - `<workdir>/.bothub/lock.json` (legacy `.bothub`)
-  - `<skill>/.bothub/origin.json` (legacy `.bothub`)
+  - `<workdir>/.market/lock.json` (legacy `.bothub`)
+  - `<skill>/.market/origin.json` (legacy `.bothub`)
 
 ### `uninstall <slug>`
 
@@ -94,7 +94,7 @@ Stores your API token + cached registry URL.
 
 ### `list`
 
-- Reads `<workdir>/.bothub/lock.json` (legacy `.bothub`).
+- Reads `<workdir>/.market/lock.json` (legacy `.bothub`).
 
 ### `update [slug]` / `update --all`
 
@@ -152,7 +152,7 @@ Stores your API token + cached registry URL.
 
 - Scans for local skill folders and publishes new/changed ones.
 - Roots can be any folder: a skills directory or a single skill folder with `SKILL.md`.
-- Auto-adds Clawdbot skill roots when `~/.clawdbot/clawdbot.json` is present:
+- Auto-adds Hanzo Bot skill roots when `~/.clawdbot/clawdbot.json` is present:
   - `agent.workspace/skills` (main agent)
   - `routing.agents.*.workspace/skills` (per-agent)
   - `~/.clawdbot/skills` (shared)
@@ -169,5 +169,5 @@ Stores your API token + cached registry URL.
 
 Telemetry:
 
-- Sent during `sync` when logged in, unless `BOTHUB_DISABLE_TELEMETRY=1` (legacy `CLAWDHUB_DISABLE_TELEMETRY=1`).
+- Sent during `sync` when logged in, unless `MARKET_DISABLE_TELEMETRY=1` (legacy `BOTHUB_DISABLE_TELEMETRY=1`, `CLAWDHUB_DISABLE_TELEMETRY=1`).
 - Details: `docs/telemetry.md`.

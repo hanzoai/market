@@ -10,71 +10,64 @@ read_when:
 ## 0) Prereqs
 
 - Bun
-- Convex CLI (`bunx convex ...`)
-- GitHub OAuth App (for login)
+- Hanzo IAM client (for login)
 - OpenAI key (for embeddings/search)
 
-## 1) Local dev (web + Convex)
+## 1) Local dev (web + API)
 
 ```bash
 bun install
 cp .env.local.example .env.local
 
-# terminal A
+# terminal A: web app
 bun run dev
 
-# terminal B
-bunx convex dev
+# terminal B: API server
+cd api && npm install && npm run dev
 ```
 
-## 2) Auth setup (GitHub OAuth + Convex Auth keys)
+## 2) Auth setup (Hanzo IAM OIDC)
 
 Fill in `.env.local`:
 
-- `AUTH_GITHUB_ID`
-- `AUTH_GITHUB_SECRET`
-- `VITE_CONVEX_URL`
-- `VITE_CONVEX_SITE_URL`
-- `CONVEX_SITE_URL` (same as `VITE_CONVEX_SITE_URL`)
+- `IAM_URL` (default `https://hanzo.id`)
+- `IAM_CLIENT_ID`
+- `IAM_CLIENT_SECRET`
+- `VITE_API_URL=/api`
+- `VITE_SITE_URL=http://localhost:3000`
+- `SITE_URL=http://localhost:3000`
 - `OPENAI_API_KEY`
-
-Generate Convex Auth keys for your deployment:
-
-```bash
-bunx auth --deployment-name <deployment> --web-server-url http://localhost:3000
-```
-
-Then paste the printed `JWT_PRIVATE_KEY` + `JWKS` into `.env.local` (and ensure the deployment got them too).
+- `DATABASE_URL`
 
 ## 3) CLI: login + basic commands
 
 From this repo:
 
 ```bash
-bun bothub --help
-bun bothub login
-bun bothub whoami
-bun bothub search gif --limit 5
+bun market --help
+bun market login
+bun market whoami
+bun market search gif --limit 5
 ```
 
-Install a skill into `./skills/<slug>` (if Clawdbot is configured, installs into that workspace instead):
+Install a skill into `./skills/<slug>` (if Hanzo Bot is configured, installs into that workspace instead):
 
 ```bash
-bun bothub install <slug>
-bun bothub list
-bun bothub uninstall <slug> --yes
+bun market install <slug>
+bun market list
+bun market uninstall <slug> --yes
 ```
 
 You can also install into any folder:
 
 ```bash
-bun bothub install <slug> --workdir /tmp/bothub-demo --dir skills
+bun market install <slug> --workdir /tmp/market-demo --dir skills
 ```
 
 Update:
 
 ```bash
-bun bothub update --all
+bun market update --all
 ```
 
 ## 4) Publish a skill
@@ -82,7 +75,7 @@ bun bothub update --all
 Create a folder containing `SKILL.md` (required) plus any supporting text files:
 
 ```bash
-mkdir -p /tmp/bothub-skill-demo && cd /tmp/bothub-skill-demo
+mkdir -p /tmp/market-skill-demo && cd /tmp/market-skill-demo
 cat > SKILL.md <<'EOF'
 ---
 name: Demo Skill
@@ -98,8 +91,8 @@ EOF
 Publish:
 
 ```bash
-bun bothub publish . \
-  --slug bothub-demo-$(date +%s) \
+bun market publish . \
+  --slug market-demo-$(date +%s) \
   --name "Demo $(date +%s)" \
   --version 1.0.0 \
   --tags latest \
@@ -111,11 +104,11 @@ bun bothub publish . \
 `sync` scans for local skill folders and publishes the ones that aren’t “synced” yet.
 
 ```bash
-bun bothub sync
+bun market sync
 ```
 
 Dry run + non-interactive:
 
 ```bash
-bun bothub sync --all --dry-run --no-input
+bun market sync --all --dry-run --no-input
 ```

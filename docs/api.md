@@ -7,7 +7,7 @@ read_when:
 
 # API v1
 
-Base: `https://hub.hanzo.bot`
+Base: `https://hanzo.market`
 
 OpenAPI: `/api/v1/openapi.json`
 

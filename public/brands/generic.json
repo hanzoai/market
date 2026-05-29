@@ -1,0 +1,25 @@
+{
+  "brandId": "generic",
+  "appId": "market",
+  "brand": {
+    "name": "generic",
+    "title": "Market",
+    "shortName": "Market",
+    "description": "A skill, persona, and agent registry.",
+    "appDomain": "localhost:3000",
+    "github": "https://github.com/example/market",
+    "primaryColor": "#000000"
+  },
+  "app": {
+    "id": "market",
+    "name": "Market",
+    "tagline": "Skills, personas, and agents in one place.",
+    "description": "A skill, persona, and agent registry.",
+    "defaultSubdomain": ""
+  },
+  "title": "Market",
+  "domain": "localhost:3000",
+  "url": "http://localhost:3000",
+  "github": "https://github.com/example/market",
+  "peers": []
+}
