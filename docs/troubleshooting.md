@@ -6,27 +6,27 @@ read_when:
 
 # Troubleshooting
 
-## `bothub login` opens browser but never completes
+## `market login` opens browser but never completes
 
 - Ensure your browser can reach `http://127.0.0.1:<port>/callback` (local firewalls/VPNs can interfere).
 - Use headless mode:
   - create a token in the web UI (Settings → API tokens)
-  - `bothub login --token clh_...`
+  - `market login --token clh_...`
 
 ## `whoami` / `publish` returns `Unauthorized` (401)
 
-- Token missing or revoked: check your config file (`BOTHUB_CONFIG_PATH` override?).
+- Token missing or revoked: check your config file (`MARKET_CONFIG_PATH` override?).
 - Ensure requests include `Authorization: Bearer ...` (CLI does this automatically).
 
 ## `publish` fails with `OPENAI_API_KEY is not configured`
 
-- Set `OPENAI_API_KEY` in the Convex environment (not only locally).
-- Re-run `bunx convex dev` / `bunx convex deploy` after setting env.
+- Set `OPENAI_API_KEY` in the API server environment.
+- Restart the API server after setting env.
 
 ## `publish` fails with `GitHub API rate limit exceeded`
 
 - This is the GitHub account-age gate lookup hitting unauthenticated limits.
-- Set `GITHUB_TOKEN` in Convex environment to use authenticated GitHub API limits.
+- Set `GITHUB_TOKEN` in the API server environment to use authenticated GitHub API limits.
 - Retry publish after a short wait if the limit was already exhausted.
 
 ## `sync` says “No skills found”
@@ -38,7 +38,7 @@ read_when:
 - Provide explicit roots:
 
 ```bash
-bothub sync --root /path/to/skills
+market sync --root /path/to/skills
 ```
 
 ## `update` refuses due to “local changes (no match)”
@@ -46,10 +46,10 @@ bothub sync --root /path/to/skills
 - Your local files don’t match any published fingerprint.
 - Options:
   - keep local edits; skip updating
-  - overwrite: `bothub update <slug> --force`
-  - publish as fork: copy to new folder/slug then `bothub publish ... --fork-of upstream@version`
+  - overwrite: `market update <slug> --force`
+  - publish as fork: copy to new folder/slug then `market publish ... --fork-of upstream@version`
 
-## `GET /api/*` works locally but not on Vercel
+## `GET /api/*` works locally but not in production
 
-- Check `vercel.json` rewrite destination points at your Convex site URL.
-- Ensure `VITE_CONVEX_SITE_URL` and `CONVEX_SITE_URL` match your deployment.
+- Check your reverse proxy / ingress routes `/api/*` to the API server (default port 3001).
+- Ensure `VITE_API_URL` and `SITE_URL` match your deployment URLs.

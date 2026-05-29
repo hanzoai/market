@@ -1,5 +1,5 @@
 ---
-summary: 'Deploy checklist: Convex backend + Vercel web app + /api rewrites.'
+summary: 'Deploy checklist: API server + web app + /api routing.'
 read_when:
   - Shipping to production
   - Debugging /api routing
@@ -7,62 +7,52 @@ read_when:
 
 # Deploy
 
-Bot Hub is two deployables:
+Hanzo Market is three deployables shipped as one image:
 
-- Web app (TanStack Start) → typically Vercel.
-- Convex backend → Convex deployment (serves `/api/...` routes).
+- Web app (TanStack Start / Nitro) on port 3000.
+- API server (Hono) on port 3001.
+- Hanzo Base (collections + storage) on port 8090.
 
-## 1) Deploy Convex
+All three are started by `docker-entrypoint.sh`.
 
-From your local machine:
+## 1) Build the image
 
 ```bash
-bunx convex deploy
+docker build -t ghcr.io/hanzoai/market:latest .
 ```
 
-Ensure Convex env is set (auth + embeddings):
+CI/CD pushes to `ghcr.io/hanzoai/market`.
 
-- `AUTH_GITHUB_ID`
-- `AUTH_GITHUB_SECRET`
-- `CONVEX_SITE_URL`
-- `JWT_PRIVATE_KEY`
-- `JWKS`
+## 2) Configure secrets
+
+K8s manifests are in `k8s/`. Required secrets in `market-secrets`:
+
+- `DATABASE_URL` (PostgreSQL)
+- `IAM_CLIENT_ID` (default `app-market`)
+- `IAM_CLIENT_SECRET`
+- `S3_ACCESS_KEY`, `S3_SECRET_KEY`
 - `OPENAI_API_KEY`
-- `SITE_URL` (your web app URL)
-- Optional webhook env (see `docs/webhook.md`)
 - Optional: `GITHUB_TOKEN` (recommended; raises GitHub account lookup limit used by publish gate)
+- Optional webhook env (see `docs/webhook.md`)
 
-## 2) Deploy web app (Vercel)
+## 3) Deploy to K8s
 
-Set env vars:
+```bash
+kubectl apply -f k8s/
+```
 
-- `VITE_CONVEX_URL`
-- `VITE_CONVEX_SITE_URL` (Convex “site” URL)
-- `CONVEX_SITE_URL` (same value; used by auth provider config)
-- `SITE_URL` (web app URL)
-
-## 3) Route `/api/*` to Convex
-
-This repo currently uses `vercel.json` rewrites:
-
-- `source: /api/:path*`
-- `destination: https://<deployment>.convex.site/api/:path*`
-
-For self-host:
-
-- update `vercel.json` to your deployment’s Convex site URL.
+The ingress routes `hanzo.market` → service `market` (port 80 → web, port 3001 → API).
 
 ## 4) Registry discovery
 
 The CLI can discover the API base from:
 
-- `/.well-known/bothub.json` (preferred)
-- `/.well-known/bothub.json` (legacy)
+- `/.well-known/bothub.json` (legacy filename retained for older CLIs)
 
 If you don’t serve that file, users must set:
 
 ```bash
-export BOTHUB_REGISTRY=https://your-site.example
+export MARKET_REGISTRY=https://your-site.example
 ```
 
 ## 5) Post-deploy checks
@@ -75,6 +65,6 @@ curl -i "https://<site>/api/v1/skills/gifgrep"
 Then:
 
 ```bash
-bothub login --site https://<site>
-bothub whoami
+market login --site https://<site>
+market whoami
 ```

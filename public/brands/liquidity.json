@@ -1,0 +1,37 @@
+{
+  "brandId": "liquidity",
+  "appId": "market",
+  "brand": {
+    "name": "liquidity",
+    "title": "Liquidity Market",
+    "shortName": "Liquidity Market",
+    "description": "Liquidity Market — compliant agent skills for the Liquid network.",
+    "legalEntity": "Liquidity Holdings",
+    "protocolName": "Liquid",
+    "copyrightHolder": "Liquidity Holdings",
+    "appDomain": "liquidity.market",
+    "infoDomain": "liquidity.io",
+    "github": "https://github.com/liquidityio/market",
+    "primaryColor": "#22D3EE",
+    "defaultChainId": 8675309,
+    "supportedChainIds": [8675309]
+  },
+  "app": {
+    "id": "market",
+    "name": "Liquidity Market",
+    "tagline": "Compliant agent skills, on-chain.",
+    "description": "Liquidity Market — compliant agent skills for the Liquid network.",
+    "defaultSubdomain": ""
+  },
+  "title": "Liquidity Market",
+  "domain": "liquidity.market",
+  "url": "https://liquidity.market",
+  "github": "https://github.com/liquidityio/market",
+  "chain": {
+    "id": 8675309,
+    "name": "Liquid EVM Mainnet",
+    "rpcUrl": "https://rpc.liquidity.io",
+    "explorerUrl": "https://explore.liquidity.io"
+  },
+  "peers": []
+}

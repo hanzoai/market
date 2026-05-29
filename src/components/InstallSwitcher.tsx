@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { getBrand } from '../brand/loader'
 
 type PackageManager = 'npm' | 'pnpm' | 'bun'
 
@@ -12,19 +13,30 @@ const PACKAGE_MANAGERS: Array<{ id: PackageManager; label: string }> = [
   { id: 'bun', label: 'bun' },
 ]
 
+function getCliPackageName() {
+  const brand = getBrand()
+  // Hanzo brand publishes the CLI as `@hanzoai/market`; other brands set
+  // brand.brand.name to choose their own org. Fork-friendly default: `market`.
+  const orgName = brand.brand.name?.trim()
+  if (orgName === 'hanzo') return '@hanzoai/market'
+  if (!orgName || orgName === 'generic') return 'market'
+  return `@${orgName}/market`
+}
+
 export function InstallSwitcher({ exampleSlug = 'sonoscli' }: InstallSwitcherProps) {
   const [pm, setPm] = useState<PackageManager>('npm')
+  const pkg = useMemo(() => getCliPackageName(), [])
 
   const command = useMemo(() => {
     switch (pm) {
       case 'npm':
-        return `npx bothub@latest install ${exampleSlug}`
+        return `npx ${pkg}@latest install ${exampleSlug}`
       case 'pnpm':
-        return `pnpm dlx bothub@latest install ${exampleSlug}`
+        return `pnpm dlx ${pkg}@latest install ${exampleSlug}`
       case 'bun':
-        return `bunx bothub@latest install ${exampleSlug}`
+        return `bunx ${pkg}@latest install ${exampleSlug}`
     }
-  }, [exampleSlug, pm])
+  }, [exampleSlug, pkg, pm])
 
   return (
     <div className="install-switcher">

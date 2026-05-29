@@ -401,8 +401,8 @@ function renderOptions(options: VersionOption[]) {
 }
 
 function getMonacoThemeName() {
-  if (typeof document === 'undefined') return 'bothub-light'
-  return document.documentElement.dataset.theme === 'dark' ? 'bothub-dark' : 'bothub-light'
+  if (typeof document === 'undefined') return 'market-light'
+  return document.documentElement.dataset.theme === 'dark' ? 'market-dark' : 'market-light'
 }
 
 function buildDiffOptions(viewMode: 'split' | 'inline'): DiffEditorProps['options'] {
@@ -440,7 +440,7 @@ function applyMonacoTheme(monaco: NonNullable<ReturnType<typeof useMonaco>>) {
   const diffInserted = toRgba(diffAdded, isDark ? 0.12 : 0.16)
   const diffRemovedBg = toRgba(diffRemoved, isDark ? 0.12 : 0.16)
 
-  monaco.editor.defineTheme(`bothub-${isDark ? 'dark' : 'light'}`, {
+  monaco.editor.defineTheme(`market-${isDark ? 'dark' : 'light'}`, {
     base,
     inherit: true,
     rules: [
@@ -469,7 +469,7 @@ function applyMonacoTheme(monaco: NonNullable<ReturnType<typeof useMonaco>>) {
     },
   })
 
-  monaco.editor.setTheme(`bothub-${isDark ? 'dark' : 'light'}`)
+  monaco.editor.setTheme(`market-${isDark ? 'dark' : 'light'}`)
 }
 
 function normalizeHex(value: string) {

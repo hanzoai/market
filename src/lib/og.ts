@@ -1,4 +1,5 @@
-import { getBotHubSiteUrl, getPersonaHubSiteUrl } from './site'
+import { getBrand } from '../brand/loader'
+import { getMarketSiteUrl, getPersonaHubSiteUrl } from './site'
 
 type SkillMetaSource = {
   slug: string
@@ -33,13 +34,13 @@ type PersonaMeta = {
   owner: string | null
 }
 
-const DEFAULT_DESCRIPTION = 'Bot Hub — a fast skill registry for agents, with vector search.'
-const DEFAULT_PERSONA_DESCRIPTION = 'PersonaHub — the home for PERSONA.md bundles and personal system lore.'
+const DEFAULT_PERSONA_DESCRIPTION =
+  'PersonaHub — the home for PERSONA.md bundles and personal system lore.'
 const OG_SKILL_IMAGE_LAYOUT_VERSION = '5'
 const OG_PERSONA_IMAGE_LAYOUT_VERSION = '1'
 
 export function getSiteUrl() {
-  return getBotHubSiteUrl()
+  return getMarketSiteUrl()
 }
 
 export function getPersonaSiteUrl() {
@@ -97,15 +98,19 @@ export async function fetchPersonaMeta(slug: string) {
 }
 
 export function buildSkillMeta(source: SkillMetaSource): SkillMeta {
+  const brand = getBrand()
   const siteUrl = getSiteUrl()
   const owner = clean(source.owner)
   const ownerId = clean(source.ownerId)
   const displayName = clean(source.displayName) || clean(source.slug)
   const summary = clean(source.summary)
   const version = clean(source.version)
-  const title = `${displayName} — Bot Hub`
+  const title = `${displayName} — ${brand.title}`
   const description =
-    summary || (owner ? `Agent skill by @${owner} on Bot Hub.` : DEFAULT_DESCRIPTION)
+    summary ||
+    (owner
+      ? `Agent skill by @${owner} on ${brand.title}.`
+      : brand.brand.description)
   const ownerPath = owner || ownerId || 'unknown'
   const url = `${siteUrl}/${ownerPath}/${source.slug}`
   const imageParams = new URLSearchParams()

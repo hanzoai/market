@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
-const THEME_KEY = 'bothub-theme'
+const THEME_KEY = 'market-theme'
 const LEGACY_THEME_KEY = 'bothub-theme'
 
 export function getStoredTheme(): ThemeMode {

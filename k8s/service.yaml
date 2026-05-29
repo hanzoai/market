@@ -1,11 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: bot-hub
-  namespace: hanzo
+  name: market
+  namespace: market
 spec:
   selector:
-    app: bot-hub
+    app: market
   ports:
     - name: web
       port: 80
