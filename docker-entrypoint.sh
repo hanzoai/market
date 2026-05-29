@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-echo "Bot Hub starting..."
+echo "Hanzo Market starting..."
 
 # Start Hanzo Base (serves admin UI + API on :8090)
 echo "Starting Base on port ${BASE_PORT:-8090}..."

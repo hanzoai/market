@@ -45,9 +45,9 @@ describe('theme', () => {
 
   it('reads stored theme with fallback', () => {
     expect(getStoredTheme()).toBe('system')
-    window.localStorage.setItem('bothub-theme', 'dark')
+    window.localStorage.setItem('market-theme', 'dark')
     expect(getStoredTheme()).toBe('dark')
-    window.localStorage.setItem('bothub-theme', 'nope')
+    window.localStorage.setItem('market-theme', 'nope')
     expect(getStoredTheme()).toBe('system')
     window.localStorage.setItem('bothub-theme', 'dark')
     expect(getStoredTheme()).toBe('dark')
@@ -85,6 +85,6 @@ describe('theme', () => {
     await waitFor(() => {
       expect(document.documentElement.dataset.theme).toBe('dark')
     })
-    expect(window.localStorage.getItem('bothub-theme')).toBe('dark')
+    expect(window.localStorage.getItem('market-theme')).toBe('dark')
   })
 })

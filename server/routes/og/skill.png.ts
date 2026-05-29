@@ -35,7 +35,7 @@ function getApiBase(eventHost: string | null) {
   if (site) return site
 
   if (eventHost) return `https://${eventHost}`
-  return 'https://hub.hanzo.bot'
+  return 'https://hanzo.market'
 }
 
 async function ensureWasm() {
@@ -66,9 +66,9 @@ export default defineEventHandler(async (event) => {
   const title = titleFromQuery || meta?.displayName || slug
   const description = descriptionFromQuery || meta?.summary || ''
 
-  const ownerLabel = owner ? `@${owner}` : 'bothub'
+  const ownerLabel = owner ? `@${owner}` : 'market'
   const versionLabel = version ? `v${version}` : 'latest'
-  const footer = owner ? `hub.hanzo.bot/${owner}/${slug}` : `hub.hanzo.bot/skills/${slug}`
+  const footer = owner ? `hanzo.market/${owner}/${slug}` : `hanzo.market/skills/${slug}`
 
   const cacheKey = version ? 'public, max-age=31536000, immutable' : 'public, max-age=3600'
   setHeader(event, 'Cache-Control', cacheKey)

@@ -1,12 +1,12 @@
 ---
-summary: "Bot Hub spec: skills registry, versioning, vector search, moderation"
+summary: "Hanzo Market spec: skills registry, versioning, vector search, moderation"
 read_when:
-  - Bootstrapping Bot Hub
+  - Bootstrapping Hanzo Market
   - Implementing schema/auth/search/versioning
   - Reviewing API and upload/download flows
 ---
 
-# Bot Hub — product + implementation spec (v1)
+# Hanzo Market — product + implementation spec (v1)
 
 ## Goals
 - personas.hanzo.ai mode for sharing `PERSONA.md` bundles (host-based entry point).

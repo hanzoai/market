@@ -10,7 +10,7 @@ import {
   WellKnownConfigSchema,
 } from './schemas'
 
-describe('bothub-schema', () => {
+describe('@hanzoai/market-schema', () => {
   it('parses lockfile records', () => {
     const lock = parseArk(
       LockfileSchema,
@@ -68,10 +68,10 @@ describe('bothub-schema', () => {
     expect(
       parseArk(
         WellKnownConfigSchema,
-        { registry: 'https://example.convex.site', authBase: 'https://hub.hanzo.bot' },
+        { registry: 'https://example.convex.site', authBase: 'https://hanzo.market' },
         'WellKnown',
       ),
-    ).toEqual({ registry: 'https://example.convex.site', authBase: 'https://hub.hanzo.bot' })
+    ).toEqual({ registry: 'https://example.convex.site', authBase: 'https://hanzo.market' })
 
     expect(
       parseArk(
@@ -84,14 +84,14 @@ describe('bothub-schema', () => {
     const combined = parseArk(
       WellKnownConfigSchema,
       {
-        apiBase: 'https://hub.hanzo.bot',
-        registry: 'https://hub.hanzo.bot',
-        authBase: 'https://hub.hanzo.bot',
+        apiBase: 'https://hanzo.market',
+        registry: 'https://hanzo.market',
+        authBase: 'https://hanzo.market',
       },
       'WellKnown',
     ) as unknown as Record<string, unknown>
-    expect(combined.apiBase).toBe('https://hub.hanzo.bot')
-    expect(combined.registry).toBe('https://hub.hanzo.bot')
+    expect(combined.apiBase).toBe('https://hanzo.market')
+    expect(combined.registry).toBe('https://hanzo.market')
   })
 
   it('throws labeled errors', () => {

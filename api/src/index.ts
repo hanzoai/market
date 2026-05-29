@@ -47,11 +47,11 @@ app.get('/api/whoami', async (c) => {
 })
 
 // ─── Start server ───────────────────────────────────────────────────────────
-console.log(`Bot Hub API starting on port ${env.port}`)
+console.log(`Hanzo Market API starting on port ${env.port}`)
 
 serve({
   fetch: app.fetch,
   port: env.port,
 })
 
-console.log(`Bot Hub API listening on http://0.0.0.0:${env.port}`)
+console.log(`Hanzo Market API listening on http://0.0.0.0:${env.port}`)

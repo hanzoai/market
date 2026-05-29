@@ -11,8 +11,8 @@ read_when:
 
 - Web app: TanStack Start (React) under `src/`.
 - Backend: Convex under `convex/` (DB, storage, actions, HTTP routes).
-- CLI: `packages/bothub/` (published as `bothub`, legacy `bothub`).
-- Shared schemas/routes: `packages/schema/` (`bothub-schema`).
+- CLI: `packages/market/` (published as `@hanzoai/market`; bin `market`; legacy `bothub`).
+- Shared schemas/routes: `packages/schema/` (`@hanzoai/market-schema`).
 
 ## Data + storage
 
@@ -38,8 +38,8 @@ read_when:
 - Download zip via `/api/v1/download?slug=...&version=...`.
 - Extract into `./skills/<slug>` (default).
 - Persist install state:
-  - `./.bothub/lock.json` (per workdir, legacy `.bothub`)
-  - `./skills/<slug>/.bothub/origin.json` (per skill folder, legacy `.bothub`)
+  - `./.market/lock.json` (per workdir, legacy `.bothub`)
+  - `./skills/<slug>/.market/origin.json` (per skill folder, legacy `.bothub`)
 
 ### Update (CLI)
 

@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
-import type { ClawdisSkillMetadata } from 'bothub-schema'
+import type { ClawdisSkillMetadata } from '@hanzoai/market-schema'
 import type { Doc, Id } from '../lib/types'
+import { getBrand } from '../brand/loader'
 import { getSkillBadges } from '../lib/badges'
 import { formatCompactStat, formatSkillStatsTriplet } from '../lib/numberFormat'
 import type { PublicSkill, PublicUser } from '../lib/publicUser'
@@ -107,6 +108,9 @@ export function SkillHeader({
   osLabels,
 }: SkillHeaderProps) {
   const formattedStats = formatSkillStatsTriplet(skill.stats)
+  const brand = getBrand()
+  const securityName = `${brand.title} Security`
+  const issueUrl = brand.github ? `${brand.github.replace(/\/$/, '')}/issues` : null
 
   return (
     <>
@@ -126,7 +130,7 @@ export function SkillHeader({
           <div className="pending-banner-content">
             <strong>Skill blocked — malicious content detected</strong>
             <p>
-              Bot Hub Security flagged this skill as malicious. Downloads are disabled. Review the
+              {securityName} flagged this skill as malicious. Downloads are disabled. Review the
               scan results below.
             </p>
           </div>
@@ -135,15 +139,11 @@ export function SkillHeader({
         <div className="pending-banner pending-banner-warning">
           <div className="pending-banner-content">
             <strong>Skill flagged — suspicious patterns detected</strong>
-            <p>Bot Hub Security flagged this skill as suspicious. Review the scan results before using.</p>
-            {canManage ? (
+            <p>{securityName} flagged this skill as suspicious. Review the scan results before using.</p>
+            {canManage && issueUrl ? (
               <p className="pending-banner-appeal">
                 If you believe this skill has been incorrectly flagged, please{' '}
-                <a
-                  href="https://github.com/hanzo-bot/bothub/issues"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+                <a href={issueUrl} target="_blank" rel="noopener noreferrer">
                   submit an issue on GitHub
                 </a>{' '}
                 and we'll break down why it was flagged and what you can do.
