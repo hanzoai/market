@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { fetchPeers, type FederatedMarket } from '../lib/federation'
+import { fetchPeers, safeHref, type FederatedMarket } from '../lib/federation'
 
 export const Route = createFileRoute('/federation')({
   component: FederationPage,
@@ -83,6 +83,13 @@ function EmptyState({ peer }: { peer: FederatedMarket }) {
 
 function PeerCard({ peer }: { peer: FederatedMarket }) {
   const isOk = peer.status === 'ok'
+  // CRITICAL: validate scheme on URLs from federated peers. A malicious peer
+  // could serve `javascript:...` in its well-known JSON; rendering it raw is XSS.
+  // rel="noreferrer" does NOT mitigate javascript: URLs.
+  const visitHref = safeHref(peer.url)
+  const skillsHref = visitHref ? safeHref(`${stripTrailingSlash(visitHref)}/skills`) : null
+  const githubHref = safeHref(peer.github)
+
   return (
     <article className="card federation-card">
       <header className="federation-card-header">
@@ -117,19 +124,20 @@ function PeerCard({ peer }: { peer: FederatedMarket }) {
       ) : null}
 
       <footer className="federation-card-footer">
-        <a className="btn btn-primary" href={peer.url} target="_blank" rel="noreferrer">
-          Visit
-        </a>
-        <a
-          className="btn"
-          href={`${stripTrailingSlash(peer.url)}/skills`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Browse skills
-        </a>
-        {peer.github ? (
-          <a className="btn" href={peer.github} target="_blank" rel="noreferrer">
+        {visitHref ? (
+          <a className="btn btn-primary" href={visitHref} target="_blank" rel="noreferrer noopener">
+            Visit
+          </a>
+        ) : (
+          <span className="federation-card-error">Invalid URL (non-http(s))</span>
+        )}
+        {skillsHref ? (
+          <a className="btn" href={skillsHref} target="_blank" rel="noreferrer noopener">
+            Browse skills
+          </a>
+        ) : null}
+        {githubHref ? (
+          <a className="btn" href={githubHref} target="_blank" rel="noreferrer noopener">
             Source
           </a>
         ) : null}
