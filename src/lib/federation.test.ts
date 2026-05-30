@@ -1,7 +1,8 @@
 /* @vitest-environment node */
 
+import { createHash } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
-import type { MergedBrand } from '../brand/types'
+import type { MergedBrand, WellKnownBrand } from '../brand/types'
 import { deriveCapabilities, fetchPeers, safeHref } from './federation'
 
 function brand(overrides: Partial<MergedBrand> = {}): MergedBrand {
@@ -36,6 +37,34 @@ function jsonResponse(body: unknown, init: ResponseInit = { status: 200 }): Resp
     headers: { 'Content-Type': 'application/json' },
     ...init,
   })
+}
+
+/**
+ * Helper to build the split-shape WellKnown app payload alongside the
+ * matching brand payload + computed hash. Uses Node `crypto` to derive
+ * the exact same digest that the aggregator (Web Crypto) will compute.
+ */
+function splitPayloads(
+  app: Omit<MergedBrand, 'brand'> & { brand?: never },
+  brand: WellKnownBrand,
+  brandUrl = '/.well-known/brand.json',
+): {
+  app: Record<string, unknown>
+  appWithoutHash: Record<string, unknown>
+  brand: WellKnownBrand
+  brandJsonBytes: string
+  brandHash: string
+} {
+  const brandJsonBytes = JSON.stringify(brand)
+  const brandHash =
+    'sha256-' + createHash('sha256').update(brandJsonBytes, 'utf8').digest('base64')
+  return {
+    app: { ...app, brand: brandUrl, brandHash } as Record<string, unknown>,
+    appWithoutHash: { ...app, brand: brandUrl } as Record<string, unknown>,
+    brand,
+    brandJsonBytes,
+    brandHash,
+  }
 }
 
 describe('deriveCapabilities', () => {
@@ -216,6 +245,231 @@ describe('fetchPeers', () => {
     })
 
     expect(result.map((r) => r.brandId)).toEqual(['hanzo', 'zoo'])
+  })
+})
+
+describe('fetchPeers — split shape (LP-0010 §4.1)', () => {
+  it('follows the brand link when payload uses the new split shape', async () => {
+    const split = splitPayloads(
+      {
+        brandId: 'hanzo',
+        appId: 'market',
+        app: {
+          id: 'market',
+          name: 'Hanzo Market',
+          tagline: 'The registry for sharp agents.',
+          description: 'Hanzo Market.',
+          defaultSubdomain: '',
+        },
+        title: 'Hanzo Market',
+        domain: 'hanzo.market',
+        url: 'https://hanzo.market',
+        github: 'https://github.com/hanzoai/market',
+        peers: [],
+      },
+      {
+        brandId: 'hanzo',
+        name: 'hanzo',
+        title: 'Hanzo Market',
+        shortName: 'Hanzo Market',
+        description: 'Hanzo Market — split-shape test.',
+        appDomain: 'hanzo.market',
+      },
+    )
+
+    const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === 'https://hanzo.market/.well-known/market.json') {
+        // serialize EXACTLY the same way splitPayloads computed the hash
+        // — using JSON.stringify with no spacing.
+        return jsonResponse(split.app)
+      }
+      if (url === 'https://hanzo.market/.well-known/brand.json') {
+        // CRITICAL: return the raw bytes that splitPayloads hashed, NOT
+        // a re-serialized object. Use new Response(string, ...) directly.
+        return new Response(split.brandJsonBytes, {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+
+    const result = await fetchPeers({
+      localOrigin: 'https://hanzo.market',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0]?.brandId).toBe('hanzo')
+    expect(result[0]?.title).toBe('Hanzo Market')
+    expect(result[0]?.status).toBe('ok')
+    expect(result[0]?.brandVerified).toBe(true)
+    // Two fetches: the app, then the brand link.
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('marks brandVerified=false when the brandHash does not match', async () => {
+    const split = splitPayloads(
+      {
+        brandId: 'hanzo',
+        appId: 'market',
+        app: {
+          id: 'market',
+          name: 'Hanzo Market',
+          tagline: 't',
+          description: 'd',
+          defaultSubdomain: '',
+        },
+        title: 'Hanzo Market',
+        domain: 'hanzo.market',
+        url: 'https://hanzo.market',
+        github: 'https://github.com/hanzoai/market',
+        peers: [],
+      },
+      {
+        brandId: 'hanzo',
+        name: 'hanzo',
+        title: 'Hanzo Market',
+        shortName: 'HM',
+        description: 'integrity test',
+        appDomain: 'hanzo.market',
+      },
+    )
+
+    // Tamper: change the brand bytes the server returns AFTER the hash was
+    // computed, so the hash in the app payload no longer matches.
+    const tamperedBytes = JSON.stringify({ ...split.brand, name: 'tampered' })
+
+    const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === 'https://hanzo.market/.well-known/market.json') return jsonResponse(split.app)
+      if (url === 'https://hanzo.market/.well-known/brand.json') {
+        return new Response(tamperedBytes, {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+
+    const result = await fetchPeers({
+      localOrigin: 'https://hanzo.market',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0]?.status).toBe('ok')
+    expect(result[0]?.brandVerified).toBe(false)
+    // Even with mismatch, the brand body is still used for rendering — the
+    // mismatch is a warning, not a hard refusal.
+    expect(result[0]?.title).toBe('Hanzo Market')
+  })
+
+  it('omits brandVerified when no brandHash is provided (split shape, unsigned)', async () => {
+    const split = splitPayloads(
+      {
+        brandId: 'hanzo',
+        appId: 'market',
+        app: {
+          id: 'market',
+          name: 'Hanzo Market',
+          tagline: 't',
+          description: 'd',
+          defaultSubdomain: '',
+        },
+        title: 'Hanzo Market',
+        domain: 'hanzo.market',
+        url: 'https://hanzo.market',
+        github: 'https://github.com/hanzoai/market',
+        peers: [],
+      },
+      {
+        brandId: 'hanzo',
+        name: 'hanzo',
+        title: 'Hanzo Market',
+        shortName: 'HM',
+        description: 'unsigned',
+        appDomain: 'hanzo.market',
+      },
+    )
+
+    const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === 'https://hanzo.market/.well-known/market.json') {
+        return jsonResponse(split.appWithoutHash)
+      }
+      if (url === 'https://hanzo.market/.well-known/brand.json') {
+        return new Response(split.brandJsonBytes, {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+
+    const result = await fetchPeers({
+      localOrigin: 'https://hanzo.market',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+
+    expect(result[0]?.status).toBe('ok')
+    // No hash provided → brandVerified is absent from the result.
+    expect(result[0]?.brandVerified).toBeUndefined()
+  })
+
+  it('resolves an absolute brand URL against the served origin', async () => {
+    const split = splitPayloads(
+      {
+        brandId: 'hanzo',
+        appId: 'market',
+        app: {
+          id: 'market',
+          name: 'Hanzo Market',
+          tagline: 't',
+          description: 'd',
+          defaultSubdomain: '',
+        },
+        title: 'Hanzo Market',
+        domain: 'hanzo.market',
+        url: 'https://hanzo.market',
+        github: 'https://github.com/hanzoai/market',
+        peers: [],
+      },
+      {
+        brandId: 'hanzo',
+        name: 'hanzo',
+        title: 'Hanzo Market',
+        shortName: 'HM',
+        description: 'absolute-url test',
+        appDomain: 'hanzo.market',
+      },
+      'https://brand.hanzo.ai/.well-known/brand.json',
+    )
+
+    const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === 'https://hanzo.market/.well-known/market.json') return jsonResponse(split.app)
+      if (url === 'https://brand.hanzo.ai/.well-known/brand.json') {
+        return new Response(split.brandJsonBytes, {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+
+    const result = await fetchPeers({
+      localOrigin: 'https://hanzo.market',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+
+    expect(result[0]?.brandVerified).toBe(true)
+    // Ensure both fetches happened.
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://brand.hanzo.ai/.well-known/brand.json',
+      expect.any(Object),
+    )
   })
 })
 
