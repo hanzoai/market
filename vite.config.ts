@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
@@ -24,6 +24,12 @@ function copyBrandPreset() {
   }
   const dest = resolvePath(root, 'public/brand.json')
   copyFileSync(presetPath, dest)
+
+  // Same source of truth: also publish the active brand at /.well-known/market.json
+  // per IETF RFC 8615 so federated peers can discover this market.
+  const wellKnownDir = resolvePath(root, 'public/.well-known')
+  if (!existsSync(wellKnownDir)) mkdirSync(wellKnownDir, { recursive: true })
+  copyFileSync(presetPath, resolvePath(wellKnownDir, 'market.json'))
 }
 
 copyBrandPreset()
