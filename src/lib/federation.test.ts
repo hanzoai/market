@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { MergedBrand } from '../brand/types'
-import { deriveCapabilities, fetchPeers } from './federation'
+import { deriveCapabilities, fetchPeers, safeHref } from './federation'
 
 function brand(overrides: Partial<MergedBrand> = {}): MergedBrand {
   return {
@@ -216,5 +216,30 @@ describe('fetchPeers', () => {
     })
 
     expect(result.map((r) => r.brandId)).toEqual(['hanzo', 'zoo'])
+  })
+})
+
+describe('safeHref XSS guard', () => {
+  it('accepts http: and https: URLs', () => {
+    expect(safeHref('https://hanzo.market')).toBe('https://hanzo.market/')
+    expect(safeHref('http://localhost:3000')).toBe('http://localhost:3000/')
+  })
+
+  it('rejects javascript: URLs (the C-1 XSS attack vector)', () => {
+    expect(safeHref('javascript:alert(1)')).toBe(null)
+    expect(safeHref('JaVaScRiPt:alert(document.cookie)')).toBe(null)
+  })
+
+  it('rejects data:, vbscript:, file: URLs', () => {
+    expect(safeHref('data:text/html,<script>alert(1)</script>')).toBe(null)
+    expect(safeHref('vbscript:msgbox(1)')).toBe(null)
+    expect(safeHref('file:///etc/passwd')).toBe(null)
+  })
+
+  it('rejects malformed input', () => {
+    expect(safeHref('')).toBe(null)
+    expect(safeHref('not a url')).toBe(null)
+    expect(safeHref(null as unknown as string)).toBe(null)
+    expect(safeHref(undefined as unknown as string)).toBe(null)
   })
 })
