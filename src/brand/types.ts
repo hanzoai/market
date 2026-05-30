@@ -19,4 +19,6 @@ export type {
   FederationPeer,
   ChainBinding,
   MergedBrand,
+  WellKnownBrand,
+  WellKnownApp,
 } from '@luxfi/brand-types'
