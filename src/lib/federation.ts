@@ -168,3 +168,21 @@ function safeHost(url: string): string | null {
     return null
   }
 }
+
+/**
+ * Returns a URL only if it parses AND uses an allowed scheme (http/https).
+ * Returns null for `javascript:`, `data:`, `vbscript:`, malformed URLs, etc.
+ * Critical: federated peer well-known payloads come from untrusted origins;
+ * rendering peer.url in an <a href> without scheme validation is XSS via
+ * `javascript:` URLs (which `rel="noreferrer"` does not mitigate).
+ */
+export function safeHref(url: string): string | null {
+  if (!url || typeof url !== 'string') return null
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    return parsed.toString()
+  } catch {
+    return null
+  }
+}
