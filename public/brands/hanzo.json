@@ -21,8 +21,8 @@
     "github": "https://github.com/hanzoai/market",
     "discord": "https://discord.gg/hanzoai",
     "primaryColor": "#E86A47",
-    "defaultChainId": 1,
-    "supportedChainIds": [1]
+    "defaultChainId": 36963,
+    "supportedChainIds": [36963]
   },
   "app": {
     "id": "market",
@@ -36,14 +36,10 @@
   "url": "https://hanzo.market",
   "github": "https://github.com/hanzoai/market",
   "chain": {
-    "id": 1,
-    "name": "Lux Mainnet",
-    "rpcUrl": "https://api.lux.network/mainnet/ext/bc/C/rpc",
-    "explorerUrl": "https://explore.lux.network"
+    "id": 36963,
+    "name": "Hanzo Mainnet",
+    "rpcUrl": "https://api.lux.network/mainnet/ext/bc/hanzo/rpc",
+    "explorerUrl": "https://explore-hanzo.lux.network"
   },
-  "peers": [
-    { "id": "zoo", "url": "https://zoo.market", "appId": "market" },
-    { "id": "lux", "url": "https://lux.market", "appId": "market" },
-    { "id": "pars", "url": "https://pars.market", "appId": "market" }
-  ]
+  "peers": []
 }
