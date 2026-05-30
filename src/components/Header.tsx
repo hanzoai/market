@@ -85,6 +85,7 @@ export default function Header() {
             Upload
           </Link>
           <Link to="/import">Import</Link>
+          <Link to="/federation">Federation</Link>
           <Link
             to="/skills"
             search={{
@@ -152,6 +153,9 @@ export default function Header() {
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link to="/import">Import</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/federation">Federation</Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link
