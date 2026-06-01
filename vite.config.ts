@@ -1,5 +1,4 @@
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import { devtools } from '@tanstack/devtools-vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
@@ -17,13 +16,6 @@ const BRAND_ID = (process.env.BRAND_ID ?? 'generic').trim() || 'generic'
 // LP-0010 §4.1 — emits public/brand.json (legacy mashed shape, for loader.ts)
 // AND public/.well-known/{brand,<appId>}.json (split shape, for federation).
 generateWellKnown(BRAND_ID)
-
-const convexEntry = require.resolve('convex')
-const convexRoot = dirname(dirname(dirname(convexEntry)))
-const convexReactPath = join(convexRoot, 'dist/esm/react/index.js')
-const convexBrowserPath = join(convexRoot, 'dist/esm/browser/index.js')
-const convexValuesPath = join(convexRoot, 'dist/esm/values/index.js')
-const convexAuthReactPath = require.resolve('@convex-dev/auth/react')
 
 function handleRollupWarning(
   warning: { code?: string; message: string; id?: string },
@@ -53,16 +45,7 @@ const config = defineConfig({
     __BUILD_BRAND_ID__: JSON.stringify(BRAND_ID),
   },
   resolve: {
-    dedupe: ['convex', '@convex-dev/auth', 'react', 'react-dom'],
-    alias: {
-      'convex/react': convexReactPath,
-      'convex/browser': convexBrowserPath,
-      'convex/values': convexValuesPath,
-      '@convex-dev/auth/react': convexAuthReactPath,
-    },
-  },
-  optimizeDeps: {
-    include: ['convex/react', 'convex/browser'],
+    dedupe: ['react', 'react-dom'],
   },
   plugins: [
     devtools(),
