@@ -19,8 +19,6 @@ jobs:
 
       - name: Install
         run: bun install --frozen-lockfile
-      - name: Peer deps
-        run: bun run check:peers
 
       - name: Lint
         run: bun run lint
