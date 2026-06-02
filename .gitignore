@@ -26,7 +26,6 @@ test-results
 .playwright
 
 # Build-time brand artifacts (generated from src/brand/presets/<BRAND_ID>.json
-# by scripts/generate-well-known.ts; source of truth is the preset).
+# by vite.config.ts copyBrandPreset(); source of truth is the preset).
 public/brand.json
-public/.well-known/brand.json
 public/.well-known/market.json
