@@ -9,7 +9,7 @@
         "@fontsource/ibm-plex-mono": "^5.2.7",
         "@fontsource/manrope": "^5.2.8",
         "@hanzoai/market-schema": "workspace:*",
-        "@luxfi/brand-types": "^0.2.0",
+        "@luxfi/brand-types": "file:../../lux/brand-types",
         "@monaco-editor/react": "^4.7.0",
         "@radix-ui/react-dropdown-menu": "^2.1.16",
         "@radix-ui/react-toggle-group": "^1.1.11",
@@ -257,7 +257,7 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
-    "@luxfi/brand-types": ["@luxfi/brand-types@0.2.0", "", {}, "sha512-0s2mcka9s9XX8lucTUD2lVncoYzf2KqVOqrXO3g3o7x/POavx/rahq6BvWw2mVkUMuZ9jtJr0zp2GCesx0Rsjg=="],
+    "@luxfi/brand-types": ["@luxfi/brand-types@file:../../lux/brand-types", { "devDependencies": { "typescript": "^5.9.3" } }],
 
     "@monaco-editor/loader": ["@monaco-editor/loader@1.7.0", "", { "dependencies": { "state-local": "^1.0.6" } }, "sha512-gIwR1HrJrrx+vfyOhYmCZ0/JcWqG5kbfG7+d3f/C1LXk2EvzAbHSg3MQ5lO2sMlo9izoAZ04shohfKLVT6crVA=="],
 
