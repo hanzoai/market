@@ -37,7 +37,8 @@ Fill in `.env.local`:
 - `VITE_SITE_URL=http://localhost:3000`
 - `SITE_URL=http://localhost:3000`
 - `OPENAI_API_KEY`
-- `DATABASE_URL`
+- `BASE_URL`
+- `BASE_ADMIN_EMAIL` / `BASE_ADMIN_PASSWORD`
 
 ## 3) CLI: login + basic commands
 

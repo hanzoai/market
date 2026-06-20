@@ -27,7 +27,8 @@ CI/CD pushes to `ghcr.io/hanzoai/market`.
 
 K8s manifests are in `k8s/`. Required secrets in `market-secrets`:
 
-- `DATABASE_URL` (PostgreSQL)
+- `BASE_URL` (Hanzo Base server, e.g. `http://localhost:8090`)
+- `BASE_ADMIN_EMAIL` / `BASE_ADMIN_PASSWORD` (Base superuser)
 - `IAM_CLIENT_ID` (default `app-market`)
 - `IAM_CLIENT_SECRET`
 - `S3_ACCESS_KEY`, `S3_SECRET_KEY`
