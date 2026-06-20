@@ -101,7 +101,8 @@ IAM_CLIENT_SECRET=...
 - `VITE_PERSONAHUB_SITE_URL`: personas.hanzo.ai site URL (`https://personas.hanzo.ai`).
 - `VITE_PERSONAHUB_HOST`: personas.hanzo.ai host match (`personas.hanzo.ai`).
 - `VITE_SITE_MODE`: Optional override (`skills` or `personas`) for SSR builds.
-- `DATABASE_URL`: PostgreSQL connection string for the API server.
+- `BASE_URL`: Hanzo Base server URL the API server talks to (local: `http://localhost:8090`).
+- `BASE_ADMIN_EMAIL` / `BASE_ADMIN_PASSWORD`: Base superuser the API server authenticates as.
 - `SITE_URL`: App URL (local: `http://localhost:3000`).
 - `IAM_URL` / `IAM_CLIENT_ID` / `IAM_CLIENT_SECRET`: Hanzo IAM OIDC client.
 - `OPENAI_API_KEY`: embeddings for search + indexing.
