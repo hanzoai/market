@@ -1,20 +1,32 @@
 #!/usr/bin/env node
 /**
- * Seed the Hanzo Market PostgreSQL database with skills and personas.
+ * Seed Hanzo Market (the `hub` collections) on Hanzo Base.
  *
- * Run from the api/ directory (needs postgres driver):
- *   cd api && DATABASE_URL=... node ../scripts/seed-db.mjs
+ * The hub runs entirely on Hanzo Base (SQLite). There is no PostgreSQL.
+ * This script writes skills, personas and integrations into Base collections
+ * via the PocketBase SDK, authenticating as a superuser.
+ *
+ * Run:
+ *   BASE_URL=http://localhost:8090 \
+ *   BASE_ADMIN_EMAIL=z@hanzo.ai BASE_ADMIN_PASSWORD=... \
+ *   node scripts/seed-db.mjs
  */
 
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { join, basename, relative } from 'node:path'
-import postgres from 'postgres'
+import PocketBase from 'pocketbase'
 
-const DATABASE_URL = process.env.DATABASE_URL
-if (!DATABASE_URL) {
-  console.error('DATABASE_URL required')
+const BASE_URL = process.env.BASE_URL ?? 'http://localhost:8090'
+const ADMIN_EMAIL = process.env.BASE_ADMIN_EMAIL
+const ADMIN_PASSWORD = process.env.BASE_ADMIN_PASSWORD
+
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  console.error('BASE_ADMIN_EMAIL and BASE_ADMIN_PASSWORD required')
   process.exit(1)
 }
+
+const pb = new PocketBase(BASE_URL)
+pb.autoCancellation(false)
 
 // Bot skills (SKILL.md in top-level dirs)
 const BOT_SKILLS_DIR = process.env.BOT_SKILLS_DIR || join(import.meta.dirname, '../../hanzobot/bot/skills')
@@ -23,17 +35,23 @@ const SKILLS_REPO_DIR = process.env.SKILLS_REPO_DIR || '/tmp/hanzo-skills/skills
 const PERSONAS_DIR = process.env.PERSONAS_DIR || join(import.meta.dirname, '../../hanzo/personas/personas')
 const INTEGRATIONS_DIR = process.env.INTEGRATIONS_DIR || join(import.meta.dirname, '../../hanzo/auto/packages/pieces/community')
 
-const sql = postgres(DATABASE_URL)
+/** Return the first existing record matching filter, or null. */
+async function findOne(collection, filter) {
+  const list = await pb.collection(collection).getList(1, 1, { filter })
+  return list.items[0] ?? null
+}
 
 async function ensureSeedUser() {
-  const existing = await sql`SELECT id FROM users WHERE handle = 'hanzo'`
-  if (existing.length > 0) return existing[0].id
+  const existing = await findOne('users', 'handle = "hanzo"')
+  if (existing) return existing.id
 
-  const res = await sql`
-    INSERT INTO users (handle, display_name, name, role, trusted_publisher)
-    VALUES ('hanzo', 'Hanzo', 'Hanzo AI', 'admin', true)
-    RETURNING id`
-  return res[0].id
+  const created = await pb.collection('users').create({
+    handle: 'hanzo',
+    displayName: 'Hanzo',
+    role: 'admin',
+    trustedPublisher: true,
+  })
+  return created.id
 }
 
 function parseFrontmatter(content) {
@@ -63,25 +81,33 @@ function extractTitle(content) {
   return h1 ? h1[1].trim() : null
 }
 
-async function insertSkill(slug, displayName, summary, content, userId) {
-  const existing = await sql`SELECT id FROM skills WHERE slug = ${slug}`
-  if (existing.length > 0) return false
+async function insertSkill(slug, displayName, summary, content, userId, extra = {}) {
+  if (await findOne('skills', `slug = ${JSON.stringify(slug)}`)) return false
 
-  const [skill] = await sql`
-    INSERT INTO skills (slug, display_name, summary, owner_user_id, moderation_status)
-    VALUES (${slug}, ${displayName}, ${summary}, ${userId}, 'active')
-    RETURNING id`
+  const skill = await pb.collection('skills').create({
+    slug,
+    displayName,
+    summary,
+    ownerUserId: userId,
+    moderationStatus: 'active',
+    statsVersions: 1,
+    ...extra,
+  })
 
-  const files = [{ path: 'SKILL.md', size: content.length, storageKey: `skills/${slug}/SKILL.md`, sha256: null }]
   const { frontmatter, body } = parseFrontmatter(content)
-  const parsed = { frontmatter, body: body.slice(0, 500) }
+  const files = [{ path: 'SKILL.md', size: content.length, storageKey: `skills/${slug}/SKILL.md`, sha256: null }]
+  const parsed = extra.parsed ?? { frontmatter, body: body.slice(0, 500) }
 
-  const [ver] = await sql`
-    INSERT INTO skill_versions (skill_id, version, changelog, files, parsed, created_by)
-    VALUES (${skill.id}, '1.0.0', 'Initial seed', ${JSON.stringify(files)}, ${JSON.stringify(parsed)}, ${userId})
-    RETURNING id`
+  const ver = await pb.collection('skill_versions').create({
+    skillId: skill.id,
+    version: extra.version ?? '1.0.0',
+    changelog: 'Initial seed',
+    files: extra.files ?? files,
+    parsed,
+    createdBy: userId,
+  })
 
-  await sql`UPDATE skills SET latest_version_id = ${ver.id}, stats_versions = 1 WHERE id = ${skill.id}`
+  await pb.collection('skills').update(skill.id, { latestVersionId: ver.id })
   return true
 }
 
@@ -90,14 +116,14 @@ async function seedBotSkills(userId) {
   try { dirs = await readdir(BOT_SKILLS_DIR, { withFileTypes: true }) } catch { return 0 }
 
   let count = 0
-  for (const dir of dirs.filter(d => d.isDirectory())) {
+  for (const dir of dirs.filter((d) => d.isDirectory())) {
     const slug = dir.name
     let content
     try { content = await readFile(join(BOT_SKILLS_DIR, slug, 'SKILL.md'), 'utf8') } catch { continue }
 
     const { frontmatter } = parseFrontmatter(content)
     const displayName = frontmatter.name || slug
-    const summary = frontmatter.description || null
+    const summary = frontmatter.description || ''
 
     if (await insertSkill(slug, displayName, summary, content, userId)) count++
   }
@@ -149,7 +175,7 @@ async function seedRepoSkills(userId) {
 
     const title = frontmatter.name || extractTitle(body || content) || pathParts[pathParts.length - 1].replace(/-/g, ' ')
     const displayName = title.charAt(0).toUpperCase() + title.slice(1)
-    const summary = frontmatter.description || null
+    const summary = frontmatter.description || ''
 
     if (await insertSkill(slug, displayName, summary, content, userId)) count++
   }
@@ -161,7 +187,7 @@ async function seedPersonas(userId) {
   try { dirs = await readdir(PERSONAS_DIR, { withFileTypes: true }) } catch { return 0 }
 
   let count = 0
-  for (const dir of dirs.filter(d => d.isDirectory())) {
+  for (const dir of dirs.filter((d) => d.isDirectory())) {
     const slug = dir.name
     let profile = {}
     try { profile = JSON.parse(await readFile(join(PERSONAS_DIR, slug, 'profile.json'), 'utf8')) } catch { continue }
@@ -170,27 +196,33 @@ async function seedPersonas(userId) {
     try { personaMd = await readFile(join(PERSONAS_DIR, slug, 'PERSONA.md'), 'utf8') } catch {}
 
     const displayName = profile.name || slug.replace(/_/g, ' ')
-    const summary = profile.tagline || profile.description || null
+    const summary = profile.tagline || profile.description || ''
 
-    const existing = await sql`SELECT id FROM personas WHERE slug = ${slug}`
-    if (existing.length > 0) { count++; continue }
+    if (await findOne('personas', `slug = ${JSON.stringify(slug)}`)) { count++; continue }
 
-    const [persona] = await sql`
-      INSERT INTO personas (slug, display_name, summary, owner_user_id)
-      VALUES (${slug}, ${displayName}, ${summary}, ${userId})
-      RETURNING id`
+    const persona = await pb.collection('personas').create({
+      slug,
+      displayName,
+      summary,
+      ownerUserId: userId,
+      statsVersions: 1,
+    })
 
     const files = [{ path: 'profile.json', size: JSON.stringify(profile).length, storageKey: `personas/${slug}/profile.json`, sha256: null }]
     if (personaMd) files.push({ path: 'PERSONA.md', size: personaMd.length, storageKey: `personas/${slug}/PERSONA.md`, sha256: null })
 
     const parsed = { frontmatter: { name: displayName, description: summary }, profile }
 
-    const [ver] = await sql`
-      INSERT INTO persona_versions (persona_id, version, changelog, files, parsed, created_by)
-      VALUES (${persona.id}, '1.0.0', 'Initial seed', ${JSON.stringify(files)}, ${JSON.stringify(parsed)}, ${userId})
-      RETURNING id`
+    const ver = await pb.collection('persona_versions').create({
+      personaId: persona.id,
+      version: '1.0.0',
+      changelog: 'Initial seed',
+      files,
+      parsed,
+      createdBy: userId,
+    })
 
-    await sql`UPDATE personas SET latest_version_id = ${ver.id}, stats_versions = 1 WHERE id = ${persona.id}`
+    await pb.collection('personas').update(persona.id, { latestVersionId: ver.id })
     count++
   }
   return count
@@ -210,7 +242,7 @@ function extractPieceMeta(source) {
   if (catMatch) {
     meta.categories = catMatch[1]
       .split(',')
-      .map(s => s.trim().replace(/.*\./, '').replace(/['"]/g, ''))
+      .map((s) => s.trim().replace(/.*\./, '').replace(/['"]/g, ''))
       .filter(Boolean)
   }
   // Count actions/triggers
@@ -232,10 +264,9 @@ async function seedIntegrations(userId) {
   try { dirs = await readdir(INTEGRATIONS_DIR, { withFileTypes: true }) } catch { return 0 }
 
   let count = 0
-  for (const dir of dirs.filter(d => d.isDirectory())) {
+  for (const dir of dirs.filter((d) => d.isDirectory())) {
     const slug = 'integration-' + dir.name
-    const existing = await sql`SELECT id FROM skills WHERE slug = ${slug}`
-    if (existing.length > 0) continue
+    if (await findOne('skills', `slug = ${JSON.stringify(slug)}`)) continue
 
     // Read package.json for basic metadata
     let pkg = {}
@@ -244,17 +275,12 @@ async function seedIntegrations(userId) {
     // Read src/index.ts for createPiece metadata
     let source = ''
     try { source = await readFile(join(INTEGRATIONS_DIR, dir.name, 'src', 'index.ts'), 'utf8') } catch {
-      try { source = await readFile(join(INTEGRATIONS_DIR, dir.name, 'src', 'index.tsx'), 'utf8') } catch { }
+      try { source = await readFile(join(INTEGRATIONS_DIR, dir.name, 'src', 'index.tsx'), 'utf8') } catch {}
     }
 
     const meta = extractPieceMeta(source)
-    const displayName = meta.displayName || pkg.displayName || dir.name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-    const summary = meta.description || pkg.description || null
-
-    const [skill] = await sql`
-      INSERT INTO skills (slug, display_name, summary, owner_user_id, moderation_status, batch)
-      VALUES (${slug}, ${displayName}, ${summary}, ${userId}, 'active', 'integration')
-      RETURNING id`
+    const displayName = meta.displayName || pkg.displayName || dir.name.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    const summary = meta.description || pkg.description || ''
 
     const parsed = {
       frontmatter: { name: displayName, description: summary },
@@ -265,23 +291,25 @@ async function seedIntegrations(userId) {
         categories: meta.categories || [],
         actionCount: meta.actionCount || 0,
         triggerCount: meta.triggerCount || 0,
-      }
+      },
     }
     const files = [{ path: 'package.json', size: JSON.stringify(pkg).length, storageKey: `integrations/${dir.name}/package.json`, sha256: null }]
 
-    const [ver] = await sql`
-      INSERT INTO skill_versions (skill_id, version, changelog, files, parsed, created_by)
-      VALUES (${skill.id}, ${pkg.version || '1.0.0'}, 'Initial seed', ${JSON.stringify(files)}, ${JSON.stringify(parsed)}, ${userId})
-      RETURNING id`
-
-    await sql`UPDATE skills SET latest_version_id = ${ver.id}, stats_versions = 1 WHERE id = ${skill.id}`
+    await insertSkill(slug, displayName, summary, '', userId, {
+      batch: 'integration',
+      version: pkg.version || '1.0.0',
+      parsed,
+      files,
+    })
     count++
   }
   return count
 }
 
 async function main() {
-  console.log('Seeding Hanzo Market database...')
+  console.log('Seeding Hanzo Market (Base) ...')
+  await pb.collection('_superusers').authWithPassword(ADMIN_EMAIL, ADMIN_PASSWORD)
+
   const userId = await ensureSeedUser()
   console.log(`Seed user: ${userId}`)
 
@@ -297,13 +325,12 @@ async function main() {
   const integrations = await seedIntegrations(userId)
   console.log(`Integrations: ${integrations} new`)
 
-  const [{ count: totalSkills }] = await sql`SELECT count(*) FROM skills WHERE batch IS NULL OR batch != 'integration'`
-  const [{ count: totalIntegrations }] = await sql`SELECT count(*) FROM skills WHERE batch = 'integration'`
-  const [{ count: totalPersonas }] = await sql`SELECT count(*) FROM personas`
+  const totalSkills = (await pb.collection('skills').getList(1, 1, { filter: 'batch = "" || batch != "integration"' })).totalItems
+  const totalIntegrations = (await pb.collection('skills').getList(1, 1, { filter: 'batch = "integration"' })).totalItems
+  const totalPersonas = (await pb.collection('personas').getList(1, 1)).totalItems
   console.log(`\nTotals: ${totalSkills} skills, ${totalIntegrations} integrations, ${totalPersonas} personas`)
 
-  await sql.end()
   console.log('Done.')
 }
 
-main().catch(err => { console.error(err); process.exit(1) })
+main().catch((err) => { console.error(err); process.exit(1) })

@@ -8,6 +8,7 @@
   "scripts": {
     "build": "bun --bun vite build",
     "coverage": "vitest run --coverage",
+    "db:seed": "node scripts/seed-db.mjs",
     "dev": "bun --bun vite dev --port 3000",
     "docs:list": "bun scripts/docs-list.ts",
     "format": "oxfmt --write",
@@ -71,6 +72,7 @@
     "oxfmt": "0.32.0",
     "oxlint": "^1.42.0",
     "oxlint-tsgolint": "^0.11.4",
+    "pocketbase": "^0.26.0",
     "typescript": "^5.9.3",
     "undici": "^7.19.2",
     "vite": "^7.3.1",
