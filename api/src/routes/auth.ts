@@ -11,7 +11,7 @@ authRouter.get('/login', (c) => {
   const redirectUri = c.req.query('redirect_uri') ?? `${env.publicUrl}/api/auth/callback`
   const state = c.req.query('state') ?? crypto.randomUUID()
 
-  const authUrl = new URL(`${env.iamUrl}/login/oauth/authorize`)
+  const authUrl = new URL(env.iamAuthorizeUrl)
   authUrl.searchParams.set('client_id', env.iamClientId)
   authUrl.searchParams.set('response_type', 'code')
   authUrl.searchParams.set('redirect_uri', redirectUri)
@@ -36,7 +36,7 @@ authRouter.get('/callback', async (c) => {
   }
 
   // Exchange code for token
-  const tokenResponse = await fetch(`${env.iamUrl}/api/login/oauth/access_token`, {
+  const tokenResponse = await fetch(env.iamTokenUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -60,7 +60,7 @@ authRouter.get('/callback', async (c) => {
   }
 
   // Get user profile from IAM
-  const profileResponse = await fetch(`${env.iamUrl}/api/userinfo`, {
+  const profileResponse = await fetch(env.iamUserinfoUrl, {
     headers: { Authorization: `Bearer ${tokens.access_token}` },
   })
 
