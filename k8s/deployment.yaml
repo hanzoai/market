@@ -2,7 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: market
-  namespace: market
+  namespace: hanzo
+  labels:
+    app: market
 spec:
   replicas: 1
   selector:
@@ -17,17 +19,96 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-secret
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
+        # ── Base sidecar ────────────────────────────────────────────────────
+        # Hanzo Base is a pure IAM client (no local password/OTP/MFA). It
+        # serves the admin UI + collection REST on loopback only; nothing
+        # outside this pod's network namespace can reach :8090. Persists its
+        # per-org encrypted SQLite to the shared PVC.
+        - name: base
+          image: ghcr.io/hanzoai/base:latest
+          imagePullPolicy: Always
+          command: ["base"]
+          args:
+            - "serve"
+            - "--http=127.0.0.1:8090"
+            - "--dir=/app/hz_data"
+            - "--migrationsDir=/app/hz_migrations"
+            - "--automigrate"
+          env:
+            # IAM is the only auth source — Base panics at boot without it.
+            - name: IAM_URL
+              value: "https://hanzo.id"
+            - name: KMS_URL
+              value: "http://kms.hanzo.svc"
+            - name: IAM_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: hanzo-bothub-iam-creds
+                  key: clientId
+            - name: IAM_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: hanzo-bothub-iam-creds
+                  key: clientSecret
+            # Per-org SQLite encryption key (envelope key for principal DBs).
+            - name: PRINCIPAL_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: market-secrets
+                  key: PRINCIPAL_ENCRYPTION_KEY
+          ports:
+            - containerPort: 8090
+              name: base
+          volumeMounts:
+            - name: base-data
+              mountPath: /app/hz_data
+            - name: hz-migrations
+              mountPath: /app/hz_migrations
+              readOnly: true
+            - name: base-tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8090
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+        # ── Market app (web + API) ──────────────────────────────────────────
+        # Connects to the Base sidecar over loopback; authenticates to it as a
+        # service principal via IAM client_credentials (see api/src/db/index.ts).
         - name: market
-          image: ghcr.io/hanzoai/market:latest
+          image: ghcr.io/hanzoai/market:0.2.1
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
               name: web
             - containerPort: 3001
               name: api
-            - containerPort: 8090
-              name: base
           env:
             - name: NODE_ENV
               value: production
@@ -35,61 +116,71 @@ spec:
               value: "3001"
             - name: WEB_PORT
               value: "3000"
-            - name: BASE_PORT
-              value: "8090"
             - name: BASE_URL
               value: "http://127.0.0.1:8090"
-            - name: BASE_ADMIN_EMAIL
-              valueFrom:
-                secretKeyRef:
-                  name: market-secrets
-                  key: BASE_ADMIN_EMAIL
-                  optional: true
-            - name: BASE_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: market-secrets
-                  key: BASE_ADMIN_PASSWORD
-                  optional: true
             - name: IAM_URL
               value: "https://hanzo.id"
             - name: IAM_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: market-secrets
-                  key: IAM_CLIENT_ID
-                  optional: true
+                  name: hanzo-bothub-iam-creds
+                  key: clientId
             - name: IAM_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: market-secrets
-                  key: IAM_CLIENT_SECRET
-                  optional: true
+                  name: hanzo-bothub-iam-creds
+                  key: clientSecret
+            - name: PUBLIC_URL
+              value: "https://hub.hanzo.bot"
+            - name: API_URL
+              value: "https://hub.hanzo.bot/api"
             - name: S3_ENDPOINT
               value: "http://minio.hanzo.svc:9000"
             - name: S3_BUCKET
               value: "market-files"
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: market-secrets
+                  key: S3_ACCESS_KEY
+                  optional: true
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: market-secrets
+                  key: S3_SECRET_KEY
+                  optional: true
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: market-secrets
                   key: OPENAI_API_KEY
                   optional: true
+          # Image ENTRYPOINT (docker-entrypoint.sh) launches web + API only;
+          # Base is the sidecar above.
           volumeMounts:
-            - name: base-data
-              mountPath: /app/hz_data
+            - name: market-tmp
+              mountPath: /tmp
           readinessProbe:
             httpGet:
               path: /health
               port: 3001
             initialDelaySeconds: 10
             periodSeconds: 10
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /health
               port: 3001
-            initialDelaySeconds: 15
+            initialDelaySeconds: 20
             periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            # Bun + Nitro write runtime caches to the app dir; rootfs is left
+            # writable here (the sidecar Base, a static Go binary, keeps RO).
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               cpu: 200m
@@ -101,12 +192,19 @@ spec:
         - name: base-data
           persistentVolumeClaim:
             claimName: market-base-data
+        - name: hz-migrations
+          configMap:
+            name: market-hz-migrations
+        - name: base-tmp
+          emptyDir: {}
+        - name: market-tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: market-base-data
-  namespace: market
+  namespace: hanzo
 spec:
   accessModes:
     - ReadWriteOnce
