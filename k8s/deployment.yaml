@@ -105,7 +105,7 @@ spec:
         # Connects to the Base sidecar over loopback; authenticates to it as a
         # service principal via IAM client_credentials (see api/src/db/index.ts).
         - name: market
-          image: ghcr.io/hanzoai/market:0.2.2
+          image: ghcr.io/hanzoai/market:0.2.3
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
