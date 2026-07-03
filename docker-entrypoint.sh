@@ -1,4 +1,7 @@
-#!/bin/sh
+#!/usr/bin/env bash
+# bash (not /bin/sh → dash): the teardown below uses `wait -n`, a bash builtin.
+# Under dash it fails immediately with "wait: Illegal option -n" and the
+# container exits 2. oven/bun:1 ships bash at /usr/bin/bash.
 set -e
 
 # Hanzo Market — web + API only.
