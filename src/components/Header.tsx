@@ -81,6 +81,7 @@ export default function Header() {
           >
             Personas
           </Link>
+          <Link to="/agents">Agents</Link>
           <Link to="/upload" search={{ updateSlug: undefined }}>
             Upload
           </Link>
@@ -145,6 +146,9 @@ export default function Header() {
                   >
                     Personas
                   </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/agents">Agents</Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link to="/upload" search={{ updateSlug: undefined }}>

@@ -4,6 +4,8 @@ import { compress } from 'hono/compress'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { env } from './lib/env.js'
+import { requireAuth } from './middleware/auth.js'
+import { agentsRouter } from './routes/agents.js'
 import { authRouter } from './routes/auth.js'
 import { searchRouter } from './routes/search.js'
 import { personasRouter } from './routes/personas.js'
@@ -28,6 +30,10 @@ app.use(
 
 // ─── Health ─────────────────────────────────────────────────────────────────
 app.get('/health', (c) => c.json({ status: 'ok', version: '0.1.0' }))
+
+// ─── Cloud agents BFF (canonical store — bare /v1, authed) ──────────────────
+app.use('/v1/agents/*', requireAuth)
+app.route('/v1/agents', agentsRouter)
 
 // ─── API Routes ─────────────────────────────────────────────────────────────
 app.route('/api/auth', authRouter)
