@@ -1,49 +1,32 @@
-name: Build & Deploy Hanzo Market
+name: Container Images CD
 
+# One-way pipeline: a v* git tag builds a SEMVER image on the hanzoai ARC pool
+# (in-cluster amd64 runners). No GitHub-hosted runners, no :latest, no auto
+# kubectl (the hub currently lives in namespace `hanzo` behind hub.hanzo.bot,
+# not the repo-manifest namespace — deploys are done by pinning the tag).
 on:
   push:
-    branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE: ghcr.io/hanzoai/market
+permissions:
+  contents: read
+  packages: write
+  id-token: write
 
 jobs:
-  build-push:
-    runs-on: ubuntu-latest
+  docker:
+    if: github.repository == 'hanzoai/market'
     permissions:
       contents: read
       packages: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.sha }}
-
-  deploy:
-    needs: build-push
-    runs-on: ubuntu-latest
-    steps:
-      - uses: digitalocean/action-doctl@v2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-
-      - name: Configure kubectl
-        run: doctl kubernetes cluster kubeconfig save 1a153000-90a6-48ad-9375-7ef901a9bf7f
-
-      - name: Deploy to K8s
-        run: |
-          kubectl rollout restart deployment/market -n market
-          kubectl rollout status deployment/market -n market --timeout=120s
+      id-token: write
+    uses: hanzoai/.github/.github/workflows/docker-build.yml@main
+    with:
+      image: ghcr.io/hanzoai/market
+      platforms: linux/amd64
+      # ARC v2 routes by scale-set NAME, not labels — pin the hanzoai amd64 pool
+      # (cross-org runs-on queues forever).
+      runner-amd64: '["hanzo-build-linux-amd64"]'
+      runner-deploy: '["hanzo-build-linux-amd64"]'
+    secrets: inherit
