@@ -17,6 +17,7 @@ import { Route as ManagementRouteImport } from './routes/management'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as FederationRouteImport } from './routes/federation'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SkillsIndexRouteImport } from './routes/skills/index'
@@ -66,6 +67,11 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgentsRoute = AgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -110,6 +116,7 @@ const OwnerSlugRoute = OwnerSlugRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/agents': typeof AgentsRoute
   '/dashboard': typeof DashboardRoute
   '/federation': typeof FederationRoute
   '/import': typeof ImportRoute
@@ -128,6 +135,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/agents': typeof AgentsRoute
   '/dashboard': typeof DashboardRoute
   '/federation': typeof FederationRoute
   '/import': typeof ImportRoute
@@ -147,6 +155,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/agents': typeof AgentsRoute
   '/dashboard': typeof DashboardRoute
   '/federation': typeof FederationRoute
   '/import': typeof ImportRoute
@@ -167,6 +176,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/agents'
     | '/dashboard'
     | '/federation'
     | '/import'
@@ -185,6 +195,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/admin'
+    | '/agents'
     | '/dashboard'
     | '/federation'
     | '/import'
@@ -203,6 +214,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/agents'
     | '/dashboard'
     | '/federation'
     | '/import'
@@ -222,6 +234,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
+  AgentsRoute: typeof AgentsRoute
   DashboardRoute: typeof DashboardRoute
   FederationRoute: typeof FederationRoute
   ImportRoute: typeof ImportRoute
@@ -296,6 +309,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/agents': {
+      id: '/agents'
+      path: '/agents'
+      fullPath: '/agents'
+      preLoaderRoute: typeof AgentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin': {
       id: '/admin'
       path: '/admin'
@@ -358,6 +378,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
+  AgentsRoute: AgentsRoute,
   DashboardRoute: DashboardRoute,
   FederationRoute: FederationRoute,
   ImportRoute: ImportRoute,
@@ -376,12 +397,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

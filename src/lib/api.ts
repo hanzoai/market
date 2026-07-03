@@ -2,10 +2,15 @@
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
 
+// Canonical cloud agents ride the bare /v1 BFF (see api/src/routes/agents.ts),
+// never the legacy /api prefix.
+const AGENTS_BASE = '/v1'
+
 type FetchOptions = {
   method?: string
   body?: unknown
   token?: string | null
+  base?: string
 }
 
 async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promise<T> {
@@ -18,7 +23,7 @@ async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promise<T> {
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${opts.base ?? API_BASE}${path}`, {
     method: opts.method ?? 'GET',
     headers,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
@@ -77,6 +82,34 @@ export const authApi = {
   loginUrl: () => `${API_BASE}/auth/login?redirect_uri=${encodeURIComponent(window.location.origin + '/api/auth/callback')}`,
 
   logout: () => apiFetch<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
+}
+
+// ─── Cloud Agents API (canonical store, via the bare /v1 BFF) ────────────────
+export type CloudAgent = {
+  id: string
+  name: string
+  model: string
+  description?: string
+  status?: string
+  runs?: number
+}
+
+export type AgentRun = {
+  status: string
+  output: string
+  model?: string
+  durationMs?: number
+}
+
+export const agentsApi = {
+  list: () => apiFetch<{ agents: CloudAgent[] }>('/agents', { base: AGENTS_BASE }),
+
+  run: (name: string, input: string) =>
+    apiFetch<AgentRun>(`/agents/${encodeURIComponent(name)}/run`, {
+      method: 'POST',
+      body: { input },
+      base: AGENTS_BASE,
+    }),
 }
 
 // ─── Skills API ─────────────────────────────────────────────────────────────

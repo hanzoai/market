@@ -14,6 +14,9 @@ export const env = {
   s3Bucket: process.env.S3_BUCKET ?? 'hub-files',
   s3Region: process.env.S3_REGION ?? 'us-east-1',
 
+  // Canonical Hanzo Cloud agent store (source of truth for agents)
+  upstreamUrl: (process.env.UPSTREAM_URL ?? 'https://api.hanzo.ai/v1').replace(/\/$/, ''),
+
   // hanzo.id OAuth
   iamUrl: process.env.IAM_URL ?? 'https://hanzo.id',
   iamClientId: process.env.IAM_CLIENT_ID ?? 'app-market',

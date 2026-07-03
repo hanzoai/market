@@ -25,6 +25,13 @@ spec:
                 name: market
                 port:
                   number: 3001
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: market
+                port:
+                  number: 3001
           - path: /health
             pathType: Exact
             backend:
