@@ -168,6 +168,7 @@ code {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 44px;
 }
 
 .brand-name {
@@ -210,8 +211,8 @@ code {
 }
 
 .nav-mobile-trigger {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--line);
   background: var(--surface);
@@ -238,6 +239,13 @@ code {
   display: flex;
   gap: 12px;
   align-items: center;
+}
+
+/* Keep the sign-in / user controls at a >=44px touch target on every
+   breakpoint (the 520px block trims padding, so pin the height here). */
+.nav-actions .btn,
+.nav-actions .user-trigger {
+  min-height: 44px;
 }
 
 .theme-toggle {
@@ -1599,7 +1607,11 @@ code {
   font: inherit;
   font-weight: 650;
   font-size: 0.85rem;
-  padding: 6px 10px;
+  padding: 6px 14px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--radius-pill);
   cursor: pointer;
   transition:
@@ -2627,12 +2639,14 @@ code {
   background: rgba(32, 27, 24, 0.85);
 }
 
-@media (max-width: 760px) {
-  .navbar-inner {
-    padding: 14px 18px;
-    gap: 14px;
-  }
-
+/* Collapse the primary nav to the hamburger before the horizontal
+   nav (brand + 6 links + theme toggle + "Sign in with Hanzo") can
+   overflow. The full nav needs ~844px of content width, so anything
+   narrower than a comfortable tablet width must collapse — otherwise
+   the sign-in button wraps and spills past the right edge (the
+   761-859px horizontal-scroll bug). 960px keeps ~60px of slack above
+   the threshold. */
+@media (max-width: 960px) {
   .nav-links {
     display: none;
   }
@@ -2643,6 +2657,13 @@ code {
 
   .theme-toggle {
     display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .navbar-inner {
+    padding: 14px 18px;
+    gap: 14px;
   }
 
   .hero {
