@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { skillsApi, searchApi, type Skill } from '../lib/api'
 import { skillToPublic } from '../lib/publicUser'
 import { InstallSwitcher } from '../components/InstallSwitcher'

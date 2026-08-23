@@ -51,24 +51,7 @@ function PersonasIndex() {
       .list({ limit: 500 })
       .then((r) =>
         setPersonas(
-          r.items.map((item: any) => ({
-            _id: item.id ?? item._id,
-            _creationTime: item._creationTime ?? new Date(item.createdAt).getTime(),
-            slug: item.slug,
-            displayName: item.displayName,
-            summary: item.summary,
-            ownerUserId: item.ownerUserId,
-            latestVersionId: item.latestVersionId ?? null,
-            tags: item.tags ?? {},
-            stats: item.stats ?? {
-              downloads: item.statsDownloads ?? 0,
-              stars: item.statsStars ?? 0,
-              versions: item.statsVersions ?? 0,
-              comments: item.statsComments ?? 0,
-            },
-            createdAt: item.createdAt ? new Date(item.createdAt).getTime() : 0,
-            updatedAt: item.updatedAt ? new Date(item.updatedAt).getTime() : 0,
-          })),
+          r.items.map(personaToPublic),
         ),
       )
       .catch(() => setPersonas([]))
