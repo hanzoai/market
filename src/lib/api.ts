@@ -293,7 +293,7 @@ export const usersApi = {
     const qs = new URLSearchParams()
     if (params?.limit) qs.set('limit', String(params.limit))
     if (params?.search) qs.set('q', params.search)
-    return apiFetch<{ items: any[]; total: number }>(`/v1/users?${qs}`)
+    return apiFetch<{ items: Doc<'users'>[]; total: number }>(`/v1/users?${qs}`)
   },
 
   setRole: (userId: string, role: string) =>
@@ -400,17 +400,59 @@ export const personasApi = {
 }
 
 // ─── Management API (staff/admin) ───────────────────────────────────────────
+/** Shapes the staff console's endpoints answer with. */
+export type ManagementSkillEntry = {
+  skill: Doc<'skills'>
+  latestVersion: Doc<'skillVersions'> | null
+  owner: Doc<'users'> | null
+}
+
+export type ReportReasonEntry = {
+  reason: string
+  createdAt: number
+  reporterHandle: string | null
+  reporterId: Id<'users'>
+}
+
+export type ReportedSkillEntry = ManagementSkillEntry & {
+  reports: ReportReasonEntry[]
+}
+
+export type RecentVersionEntry = {
+  version: Doc<'skillVersions'>
+  skill: Doc<'skills'> | null
+  owner: Doc<'users'> | null
+}
+
+export type DuplicateCandidateEntry = {
+  skill: Doc<'skills'>
+  latestVersion: Doc<'skillVersions'> | null
+  fingerprint: string | null
+  matches: Array<{ skill: Doc<'skills'>; owner: Doc<'users'> | null }>
+  owner: Doc<'users'> | null
+}
+
+export type StaffSkillResult = {
+  skill: Doc<'skills'>
+  latestVersion: Doc<'skillVersions'> | null
+  owner: Doc<'users'> | null
+  canonical: {
+    skill: { slug: string; displayName: string }
+    owner: { handle: string | null; userId: Id<'users'> | null }
+  } | null
+} | null
+
 export const managementApi = {
-  getBySlugForStaff: (slug: string) => apiFetch<any>(`/v1/management/skills/${slug}`),
+  getBySlugForStaff: (slug: string) => apiFetch<StaffSkillResult>(`/v1/management/skills/${slug}`),
 
   listRecentVersions: (limit = 20) =>
-    apiFetch<{ items: any[] }>(`/v1/management/recent-versions?limit=${limit}`),
+    apiFetch<{ items: RecentVersionEntry[] }>(`/v1/management/recent-versions?limit=${limit}`),
 
   listReportedSkills: (limit = 25) =>
-    apiFetch<{ items: any[] }>(`/v1/management/reported-skills?limit=${limit}`),
+    apiFetch<{ items: ReportedSkillEntry[] }>(`/v1/management/reported-skills?limit=${limit}`),
 
   listDuplicateCandidates: (limit = 20) =>
-    apiFetch<{ items: any[] }>(`/v1/management/duplicate-candidates?limit=${limit}`),
+    apiFetch<{ items: DuplicateCandidateEntry[] }>(`/v1/management/duplicate-candidates?limit=${limit}`),
 
   setBatch: (skillId: string, batch?: string) =>
     apiFetch<{ ok: boolean }>(`/v1/management/skills/${skillId}/batch`, {

@@ -1,6 +1,13 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { managementApi, usersApi } from '../lib/api'
+import {
+  managementApi,
+  usersApi,
+  type DuplicateCandidateEntry,
+  type RecentVersionEntry,
+  type ReportedSkillEntry,
+  type StaffSkillResult,
+} from '../lib/api'
 import type { Doc, Id } from '../lib/types'
 import {
   getSkillBadges,
@@ -10,47 +17,6 @@ import {
 } from '../lib/badges'
 import { isAdmin, isModerator } from '../lib/roles'
 import { useAuthStatus } from '../lib/useAuthStatus'
-
-type ManagementSkillEntry = {
-  skill: Doc<'skills'>
-  latestVersion: Doc<'skillVersions'> | null
-  owner: Doc<'users'> | null
-}
-
-type ReportReasonEntry = {
-  reason: string
-  createdAt: number
-  reporterHandle: string | null
-  reporterId: Id<'users'>
-}
-
-type ReportedSkillEntry = ManagementSkillEntry & {
-  reports: ReportReasonEntry[]
-}
-
-type RecentVersionEntry = {
-  version: Doc<'skillVersions'>
-  skill: Doc<'skills'> | null
-  owner: Doc<'users'> | null
-}
-
-type DuplicateCandidateEntry = {
-  skill: Doc<'skills'>
-  latestVersion: Doc<'skillVersions'> | null
-  fingerprint: string | null
-  matches: Array<{ skill: Doc<'skills'>; owner: Doc<'users'> | null }>
-  owner: Doc<'users'> | null
-}
-
-type SkillBySlugResult = {
-  skill: Doc<'skills'>
-  latestVersion: Doc<'skillVersions'> | null
-  owner: Doc<'users'> | null
-  canonical: {
-    skill: { slug: string; displayName: string }
-    owner: { handle: string | null; userId: Id<'users'> | null }
-  } | null
-} | null
 
 function resolveOwnerParam(handle: string | null | undefined, ownerId?: Id<'users'>) {
   return handle?.trim() || (ownerId ? String(ownerId) : 'unknown')
@@ -78,7 +44,7 @@ function Management() {
 
   const selectedSlug = search.skill?.trim()
 
-  const [selectedSkill, setSelectedSkill] = useState<SkillBySlugResult | undefined>(undefined)
+  const [selectedSkill, setSelectedSkill] = useState<StaffSkillResult | undefined>(undefined)
   const [recentVersions, setRecentVersions] = useState<RecentVersionEntry[] | undefined>(undefined)
   const [reportedSkills, setReportedSkills] = useState<ReportedSkillEntry[] | undefined>(undefined)
   const [duplicateCandidates, setDuplicateCandidates] = useState<DuplicateCandidateEntry[] | undefined>(undefined)
@@ -97,22 +63,22 @@ function Management() {
     if (!staff || !selectedSlug) { setSelectedSkill(undefined); return }
     managementApi
       .getBySlugForStaff(selectedSlug)
-      .then((data: any) => setSelectedSkill(data as SkillBySlugResult))
+      .then(setSelectedSkill)
       .catch(() => setSelectedSkill(null))
   }, [staff, selectedSlug])
 
   // Fetch management lists
   useEffect(() => {
     if (!staff) return
-    managementApi.listRecentVersions(20).then((r) => setRecentVersions(r.items as any)).catch(() => setRecentVersions([]))
-    managementApi.listReportedSkills(25).then((r) => setReportedSkills(r.items as any)).catch(() => setReportedSkills([]))
-    managementApi.listDuplicateCandidates(20).then((r) => setDuplicateCandidates(r.items as any)).catch(() => setDuplicateCandidates([]))
+    managementApi.listRecentVersions(20).then((r) => setRecentVersions(r.items)).catch(() => setRecentVersions([]))
+    managementApi.listReportedSkills(25).then((r) => setReportedSkills(r.items)).catch(() => setReportedSkills([]))
+    managementApi.listDuplicateCandidates(20).then((r) => setDuplicateCandidates(r.items)).catch(() => setDuplicateCandidates([]))
   }, [staff])
 
   // Fetch user list (admin only)
   useEffect(() => {
     if (!admin) return
-    usersApi.list({ limit: 200, search: userSearchDebounced.trim() || undefined }).then((r) => setUserResult(r as any)).catch(() => {})
+    usersApi.list({ limit: 200, search: userSearchDebounced.trim() || undefined }).then(setUserResult).catch(() => {})
   }, [admin, userSearchDebounced])
 
   const selectedSkillId = selectedSkill?.skill?._id ?? null
