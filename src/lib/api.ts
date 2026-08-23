@@ -330,6 +330,20 @@ export const tokensApi = {
 }
 
 // ─── Personas API ──────────────────────────────────────────────────────────────
+/** A comment row as the personas endpoint reports it. Two spellings are
+ *  tolerated because the server has answered both: a flat row with
+ *  `userHandle`/`userDisplayName`, and one carrying a nested `user`. */
+export type PersonaCommentRow = {
+  id?: string
+  _id?: string
+  body: string
+  userId: string
+  createdAt: string
+  user?: { handle: string | null; name?: string | null; _id?: string } | null
+  userHandle?: string | null
+  userDisplayName?: string | null
+}
+
 export const personasApi = {
   list: (params?: { limit?: number }) => {
     const qs = new URLSearchParams()
@@ -345,7 +359,7 @@ export const personasApi = {
     apiFetch<{ items: any[] }>(`/v1/personas/${slug}/versions?limit=${limit}`),
 
   comments: (slug: string) =>
-    apiFetch<{ items: any[] }>(`/v1/personas/${slug}/comments`),
+    apiFetch<{ items: PersonaCommentRow[] }>(`/v1/personas/${slug}/comments`),
 
   addComment: (slug: string, body: string) =>
     apiFetch<{ id: string }>(`/v1/personas/${slug}/comments`, { method: 'POST', body: { body } }),
@@ -456,9 +470,34 @@ export const githubImportApi = {
 }
 
 // ─── Telemetry API ──────────────────────────────────────────────────────────
+/** What `telemetryApi.installed` answers with. */
+export type TelemetryResponse = {
+  roots: Array<{
+    rootId: string
+    label: string
+    firstSeenAt: number
+    lastSeenAt: number
+    expiredAt?: number
+    skills: Array<{
+      skill: {
+        slug: string
+        displayName: string
+        summary?: string
+        stats: unknown
+        ownerUserId: string
+      }
+      firstSeenAt: number
+      lastSeenAt: number
+      lastVersion?: string
+      removedAt?: number
+    }>
+  }>
+  cutoffDays: number
+}
+
 export const telemetryApi = {
   getMyInstalled: (includeRemoved = false) =>
-    apiFetch<any>(`/v1/telemetry/installed?includeRemoved=${includeRemoved}`),
+    apiFetch<TelemetryResponse>(`/v1/telemetry/installed?includeRemoved=${includeRemoved}`),
 
   clearMyTelemetry: () =>
     apiFetch<{ ok: boolean }>('/v1/telemetry/installed', { method: 'DELETE' }),

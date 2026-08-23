@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { skillsApi, telemetryApi, usersApi, type Skill } from '../../lib/api'
+import { skillsApi, telemetryApi, usersApi, type Skill, type TelemetryResponse } from '../../lib/api'
 import { SkillCard } from '../../components/SkillCard'
 import { SkillStatsTripletLine } from '../../components/SkillStats'
 import { getSkillBadges } from '../../lib/badges'
@@ -92,7 +92,7 @@ function UserProfile() {
     setInstalled(undefined)
     telemetryApi
       .getMyInstalled(includeRemoved)
-      .then((data: any) => setInstalled(data as TelemetryResponse))
+      .then(setInstalled)
       .catch(() => setInstalled(null))
   }, [isSelf, tab, includeRemoved])
 
@@ -343,26 +343,3 @@ function InstalledSection(props: {
   )
 }
 
-type TelemetryResponse = {
-  roots: Array<{
-    rootId: string
-    label: string
-    firstSeenAt: number
-    lastSeenAt: number
-    expiredAt?: number
-    skills: Array<{
-      skill: {
-        slug: string
-        displayName: string
-        summary?: string
-        stats: unknown
-        ownerUserId: string
-      }
-      firstSeenAt: number
-      lastSeenAt: number
-      lastVersion?: string
-      removedAt?: number
-    }>
-  }>
-  cutoffDays: number
-}
