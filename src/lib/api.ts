@@ -356,7 +356,7 @@ export const personasApi = {
   getExisting: (slug: string) => apiFetch<PersonaBySlugResult>(`/v1/personas/${slug}/detail`).catch(() => null),
 
   versions: (slug: string, limit = 50) =>
-    apiFetch<{ items: any[] }>(`/v1/personas/${slug}/versions?limit=${limit}`),
+    apiFetch<{ items: Doc<'personaVersions'>[] }>(`/v1/personas/${slug}/versions?limit=${limit}`),
 
   comments: (slug: string) =>
     apiFetch<{ items: PersonaCommentRow[] }>(`/v1/personas/${slug}/comments`),
@@ -489,12 +489,41 @@ export const managementApi = {
 }
 
 // ─── GitHub Import API ──────────────────────────────────────────────────────
+/** Shapes the GitHub import endpoints answer with. */
+export type Candidate = {
+  path: string
+  readmePath: string
+  name: string | null
+  description: string | null
+}
+
+export type CandidatePreview = {
+  resolved: {
+    owner: string
+    repo: string
+    ref: string
+    commit: string
+    path: string
+    repoUrl: string
+    originalUrl: string
+  }
+  candidate: Candidate
+  defaults: {
+    selectedPaths: string[]
+    slug: string
+    displayName: string
+    version: string
+    tags: string[]
+  }
+  files: Array<{ path: string; size: number; defaultSelected: boolean }>
+}
+
 export const githubImportApi = {
   preview: (url: string) =>
-    apiFetch<{ candidates: any[] }>(`/v1/import/github/preview`, { method: 'POST', body: { url } }),
+    apiFetch<{ candidates: Candidate[] }>(`/v1/import/github/preview`, { method: 'POST', body: { url } }),
 
   previewCandidate: (url: string, candidatePath: string) =>
-    apiFetch<any>(`/v1/import/github/preview-candidate`, { method: 'POST', body: { url, candidatePath } }),
+    apiFetch<CandidatePreview>(`/v1/import/github/preview-candidate`, { method: 'POST', body: { url, candidatePath } }),
 
   importSkill: (data: {
     url: string
