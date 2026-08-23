@@ -57,8 +57,10 @@ type SkillHeaderProps = {
   versionById: Map<Id<'skillVersions'>, Doc<'skillVersions'>>
   tagName: string
   onTagNameChange: (value: string) => void
-  tagVersionId: Id<'skillVersions'> | ''
-  onTagVersionChange: (value: Id<'skillVersions'> | '') => void
+  // Empty means no version chosen yet. `Id<T>` erases to string, so spelling
+  // that as `| ''` adds nothing the type system can act on.
+  tagVersionId: Id<'skillVersions'>
+  onTagVersionChange: (value: Id<'skillVersions'>) => void
   onTagSubmit: () => void
   tagVersions: Doc<'skillVersions'>[]
   clawdis: ClawdisSkillMetadata | undefined

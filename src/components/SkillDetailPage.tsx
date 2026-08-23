@@ -67,7 +67,8 @@ export function SkillDetailPage({
   const [readme, setReadme] = useState<string | null>(null)
   const [readmeError, setReadmeError] = useState<string | null>(null)
   const [tagName, setTagName] = useState('latest')
-  const [tagVersionId, setTagVersionId] = useState<Id<'skillVersions'> | ''>('')
+  // '' means no version chosen yet; see SkillHeader's props for why it is not in the type.
+  const [tagVersionId, setTagVersionId] = useState<Id<'skillVersions'>>('')
   const [activeTab, setActiveTab] = useState<'files' | 'compare' | 'versions'>('files')
   const [shouldPrefetchCompare, setShouldPrefetchCompare] = useState(false)
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false)
