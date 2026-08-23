@@ -32,6 +32,15 @@ function brand(overrides: Partial<MergedBrand> = {}): MergedBrand {
   }
 }
 
+/** The URL a fetch was called with, whichever of the three shapes it arrived as.
+ *  `String()` on a Request yields "[object Request]", so a Request would silently
+ *  match no route and the test would assert against a fallback. */
+function requestedUrl(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input
+  if (input instanceof URL) return input.href
+  return input.url
+}
+
 function jsonResponse(body: unknown, init: ResponseInit = { status: 200 }): Response {
   return new Response(JSON.stringify(body), {
     headers: { 'Content-Type': 'application/json' },
@@ -89,7 +98,7 @@ describe('fetchPeers', () => {
   it('returns the local market as the first entry on a fresh install', async () => {
     const local = brand({ peers: [] })
     const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
+      const url = requestedUrl(input)
       if (url === 'https://hanzo.market/.well-known/market.json') {
         return jsonResponse(local)
       }
@@ -130,7 +139,7 @@ describe('fetchPeers', () => {
     })
 
     const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
+      const url = requestedUrl(input)
       if (url === 'https://hanzo.market/.well-known/market.json') return jsonResponse(local)
       if (url === 'https://zoo.market/.well-known/market.json') return jsonResponse(zoo)
       if (url === 'https://lux.market/.well-known/market.json') return jsonResponse(lux)
@@ -158,7 +167,7 @@ describe('fetchPeers', () => {
     const zoo = brand({ brandId: 'zoo', title: 'Zoo', url: 'https://zoo.market', domain: 'zoo.market' })
 
     const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
+      const url = requestedUrl(input)
       if (url === 'https://hanzo.market/.well-known/market.json') return jsonResponse(local)
       if (url === 'https://zoo.market/.well-known/market.json') return jsonResponse(zoo)
       if (url === 'https://broken.example/.well-known/market.json') {
@@ -185,7 +194,7 @@ describe('fetchPeers', () => {
     })
 
     const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
+      const url = requestedUrl(input)
       if (url === 'https://hanzo.market/.well-known/market.json') return jsonResponse(local)
       if (url === 'https://slow.example/.well-known/market.json') {
         // Abort path: simulate AbortController signal triggering before response.
@@ -233,7 +242,7 @@ describe('fetchPeers', () => {
     const zoo = brand({ brandId: 'zoo', title: 'Zoo', url: 'https://zoo.market', domain: 'zoo.market' })
 
     const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
+      const url = requestedUrl(input)
       if (url === 'https://hanzo.market/.well-known/market.json') return jsonResponse(local)
       if (url === 'https://zoo.market/.well-known/market.json') return jsonResponse(zoo)
       throw new Error(`unexpected fetch: ${url}`)
@@ -278,7 +287,7 @@ describe('fetchPeers — split shape (LP-0010 §4.1)', () => {
     )
 
     const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
+      const url = requestedUrl(input)
       if (url === 'https://hanzo.market/.well-known/market.json') {
         // serialize EXACTLY the same way splitPayloads computed the hash
         // — using JSON.stringify with no spacing.
@@ -342,7 +351,7 @@ describe('fetchPeers — split shape (LP-0010 §4.1)', () => {
     const tamperedBytes = JSON.stringify({ ...split.brand, name: 'tampered' })
 
     const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
+      const url = requestedUrl(input)
       if (url === 'https://hanzo.market/.well-known/market.json') return jsonResponse(split.app)
       if (url === 'https://hanzo.market/.well-known/brand.json') {
         return new Response(tamperedBytes, {
@@ -395,7 +404,7 @@ describe('fetchPeers — split shape (LP-0010 §4.1)', () => {
     )
 
     const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
+      const url = requestedUrl(input)
       if (url === 'https://hanzo.market/.well-known/market.json') {
         return jsonResponse(split.appWithoutHash)
       }
@@ -448,7 +457,7 @@ describe('fetchPeers — split shape (LP-0010 §4.1)', () => {
     )
 
     const fetchImpl = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input)
+      const url = requestedUrl(input)
       if (url === 'https://hanzo.market/.well-known/market.json') return jsonResponse(split.app)
       if (url === 'https://brand.hanzo.ai/.well-known/brand.json') {
         return new Response(split.brandJsonBytes, {

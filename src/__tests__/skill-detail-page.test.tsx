@@ -17,6 +17,13 @@ const reportMock = vi.fn()
 const getReadmeMock = vi.fn()
 const updateTagsMock = vi.fn()
 const getFileTextMock = vi.fn()
+// The page mounts SkillCommentsPanel, which fetches on mount. Leaving these off
+// the mock makes skillsApi.comments undefined, and calling it throws from an
+// effect — React unmounts the tree, so the failure reads as "the dialog never
+// opened" rather than "the comments call was never stubbed".
+const commentsMock = vi.fn()
+const addCommentMock = vi.fn()
+const deleteCommentMock = vi.fn()
 
 vi.mock('../lib/api', () => ({
   skillsApi: {
@@ -28,6 +35,9 @@ vi.mock('../lib/api', () => ({
     getReadme: (...args: unknown[]) => getReadmeMock(...args),
     updateTags: (...args: unknown[]) => updateTagsMock(...args),
     getFileText: (...args: unknown[]) => getFileTextMock(...args),
+    comments: (...args: unknown[]) => commentsMock(...args),
+    addComment: (...args: unknown[]) => addCommentMock(...args),
+    deleteComment: (...args: unknown[]) => deleteCommentMock(...args),
   },
 }))
 
@@ -62,6 +72,9 @@ describe('SkillDetailPage', () => {
     getReadmeMock.mockReset()
     updateTagsMock.mockReset()
     getFileTextMock.mockReset()
+    commentsMock.mockReset()
+    addCommentMock.mockReset()
+    deleteCommentMock.mockReset()
     navigateMock.mockReset()
     useAuthStatusMock.mockReset()
 
@@ -69,6 +82,7 @@ describe('SkillDetailPage', () => {
     versionsMock.mockResolvedValue({ items: [] })
     isStarredMock.mockResolvedValue({ starred: false })
     getReadmeMock.mockResolvedValue({ text: '' })
+    commentsMock.mockResolvedValue({ items: [] })
 
     useAuthStatusMock.mockReturnValue({
       isAuthenticated: false,

@@ -19,7 +19,7 @@ vi.mock('@tanstack/react-router', () => ({
   Link: (props: { children: ReactNode }) => <a href="/">{props.children}</a>,
 }))
 
-vi.mock('../../lib/api', async () => {
+vi.mock('../lib/api', async () => {
   return {
     skillsApi: {
       list: (...args: unknown[]) => listMock(...args),
@@ -62,7 +62,9 @@ describe('SkillsIndex', () => {
   it('shows loading state while fetching', () => {
     listMock.mockReturnValue(new Promise(() => {}))
     render(<SkillsIndex />)
-    expect(screen.getByText('Loading skills…')).toBeTruthy()
+    // Two affordances carry it while a page is in flight: the header subtitle
+    // and the results card. Either one alone means loading is being shown.
+    expect(screen.getAllByText('Loading skills…').length).toBeGreaterThan(0)
     expect(screen.queryByText('No skills match that filter.')).toBeNull()
   })
 
@@ -109,9 +111,12 @@ describe('SkillsIndex', () => {
       await vi.runAllTimersAsync()
     })
 
+    // The slug tiebreak is ascending whichever way stars are pointing: it exists
+    // to make equal-star results deterministic, not to mirror the primary key.
+    // So a and b (both 5) stay alphabetical, and c (4) sorts last.
     const links = screen.getAllByRole('link')
-    expect(links[0]?.textContent).toContain('Skill B')
-    expect(links[1]?.textContent).toContain('Skill A')
+    expect(links[0]?.textContent).toContain('Skill A')
+    expect(links[1]?.textContent).toContain('Skill B')
     expect(links[2]?.textContent).toContain('Skill C')
   })
 })
