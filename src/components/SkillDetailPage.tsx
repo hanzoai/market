@@ -130,7 +130,7 @@ export function SkillDetailPage({
   const canManage = canManageSkill(me, skill)
 
   const ownerHandle = owner?.handle ?? owner?.name ?? null
-  const ownerParam = ownerHandle ?? ((owner as any)?._id ? String((owner as any)._id) : null)
+  const ownerParam = ownerHandle ?? (owner?._id ? String(owner._id) : null)
   const wantsCanonicalRedirect = Boolean(
     ownerParam &&
       (redirectToCanonical ||

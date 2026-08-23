@@ -1,7 +1,13 @@
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import semver from 'semver'
-import { skillsApi, personasApi, uploadApi } from '../lib/api'
+import {
+  skillsApi,
+  personasApi,
+  uploadApi,
+  type PersonaBySlugResult,
+  type SkillBySlugResult,
+} from '../lib/api'
 import { getSiteMode } from '../lib/site'
 import { expandDroppedItems, expandFiles } from '../lib/uploadFiles'
 import { useAuthStatus } from '../lib/useAuthStatus'
@@ -30,7 +36,7 @@ export function Upload() {
   const requiredFileLabel = isPersonaMode ? 'PERSONA.md' : 'SKILL.md'
   const contentLabel = isPersonaMode ? 'persona' : 'skill'
 
-  const [existing, setExisting] = useState<any>(undefined)
+  const [existing, setExisting] = useState<SkillBySlugResult | PersonaBySlugResult | undefined>(undefined)
   const [hasAttempted, setHasAttempted] = useState(false)
   const [files, setFiles] = useState<File[]>([])
   const [slug, setSlug] = useState(updateSlug ?? '')
@@ -91,13 +97,17 @@ export function Upload() {
   useEffect(() => {
     if (!updateSlug) return
     const fetchExisting = isPersonaMode ? personasApi.getExisting : skillsApi.getExisting
-    fetchExisting(updateSlug).then((data: any) => setExisting(data)).catch(() => setExisting(null))
+    fetchExisting(updateSlug).then(setExisting).catch(() => setExisting(null))
   }, [updateSlug, isPersonaMode])
 
   useEffect(() => {
-    if (!existing?.latestVersion || (!existing?.skill && !existing?.persona)) return
-    const name = existing.skill?.displayName ?? existing.persona?.displayName
-    const nextSlug = existing.skill?.slug ?? existing.persona?.slug
+    if (!existing?.latestVersion) return
+    // One endpoint answers with `skill`, the other with `persona`; the rest of
+    // this reads the same two fields off whichever arrived.
+    const subject = 'skill' in existing ? existing.skill : existing.persona
+    if (!subject) return
+    const name = subject.displayName
+    const nextSlug = subject.slug
     if (nextSlug) setSlug(nextSlug)
     if (name) setDisplayName(name)
     const nextVersion = semver.inc(existing.latestVersion.version, 'patch')
