@@ -1,40 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { skillsApi, telemetryApi, usersApi, type Skill, type TelemetryResponse } from '../../lib/api'
+import { skillsApi, telemetryApi, usersApi, type TelemetryResponse } from '../../lib/api'
 import { SkillCard } from '../../components/SkillCard'
 import { SkillStatsTripletLine } from '../../components/SkillStats'
 import { getSkillBadges } from '../../lib/badges'
-import type { PublicSkill, PublicUser } from '../../lib/publicUser'
+import { skillToPublic, type PublicSkill, type PublicUser } from '../../lib/publicUser'
 import { useAuthStatus } from '../../lib/useAuthStatus'
 
 export const Route = createFileRoute('/u/$handle')({
   component: UserProfile,
 })
 
-/** Convert flat API Skill to PublicSkill shape expected by SkillCard */
-function apiSkillToPublic(s: Skill): PublicSkill {
-  return {
-    _id: s.id,
-    _creationTime: new Date(s.createdAt).getTime(),
-    slug: s.slug,
-    displayName: s.displayName,
-    summary: s.summary,
-    ownerUserId: s.ownerUserId,
-    canonicalSkillId: null,
-    forkOf: null,
-    latestVersionId: null,
-    tags: {},
-    badges: s.badges as any,
-    stats: {
-      downloads: s.statsDownloads,
-      stars: s.statsStars,
-      versions: s.statsVersions,
-      comments: s.statsComments,
-    },
-    createdAt: new Date(s.createdAt).getTime(),
-    updatedAt: new Date(s.updatedAt).getTime(),
-  } as any
-}
 
 function UserProfile() {
   const { handle } = Route.useParams()
@@ -47,7 +23,7 @@ function UserProfile() {
   const [includeRemoved, setIncludeRemoved] = useState(false)
   const [installed, setInstalled] = useState<TelemetryResponse | null | undefined>(undefined)
 
-  const isSelf = Boolean(me && user && me._id === (user as any)._id)
+  const isSelf = Boolean(me && user && me._id === user._id)
 
   // Fetch user profile
   useEffect(() => {
@@ -73,7 +49,7 @@ function UserProfile() {
     if (user === undefined || user === null) return
     usersApi
       .skills(handle)
-      .then((r) => setPublishedSkills(r.items.map(apiSkillToPublic)))
+      .then((r) => setPublishedSkills(r.items.map(skillToPublic)))
       .catch(() => setPublishedSkills([]))
   }, [user, handle])
 
@@ -82,7 +58,7 @@ function UserProfile() {
     if (user === undefined || user === null) return
     usersApi
       .starredSkills(handle, 50)
-      .then((r) => setStarredSkills(r.items.map(apiSkillToPublic)))
+      .then((r) => setStarredSkills(r.items.map(skillToPublic)))
       .catch(() => setStarredSkills([]))
   }, [user, handle])
 
