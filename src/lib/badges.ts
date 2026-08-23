@@ -1,10 +1,11 @@
-import type { Doc, Id } from '../lib/types'
+import type { Doc } from '../lib/types'
 
 type BadgeKind = Doc<'skillBadges'>['kind']
 
-type SkillBadgeMap = Partial<Record<BadgeKind, { byUserId: Id<'users'>; at: number }>>
-
-type SkillLike = { badges?: SkillBadgeMap | null }
+// Presence is the whole question these predicates ask — none of them reads
+// `byUserId` or `at`. Requiring that shape made every caller holding a wire
+// row cast, so it asks only for keys now.
+type SkillLike = { badges?: Partial<Record<BadgeKind, unknown>> | null }
 
 type BadgeLabel = 'Deprecated' | 'Official' | 'Highlighted'
 

@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { skillsApi, searchApi, type Skill } from '../lib/api'
+import { skillToPublic } from '../lib/publicUser'
 import { InstallSwitcher } from '../components/InstallSwitcher'
 import { SkillCard } from '../components/SkillCard'
 import { SkillStatsTripletLine } from '../components/SkillStats'
@@ -103,8 +104,8 @@ function HighlightedSkills() {
           highlighted.map((skill) => (
             <SkillCard
               key={skill.id}
-              skill={{ ...skill, _id: skill.id, stats: { downloads: skill.statsDownloads, stars: skill.statsStars, versions: skill.statsVersions, comments: skill.statsComments } } as any}
-              badge={getSkillBadges({ badges: skill.badges as any })}
+              skill={skillToPublic(skill)}
+              badge={getSkillBadges(skill)}
               summaryFallback="A fresh skill bundle."
               meta={
                 <div className="skill-card-footer-rows">
@@ -199,7 +200,7 @@ function PopularSkills() {
           popular.map((skill) => (
             <SkillCard
               key={skill.id}
-              skill={{ ...skill, _id: skill.id, stats: { downloads: skill.statsDownloads, stars: skill.statsStars, versions: skill.statsVersions, comments: skill.statsComments } } as any}
+              skill={skillToPublic(skill)}
               summaryFallback="Agent-ready skill pack."
               meta={
                 <div className="skill-card-footer-rows">

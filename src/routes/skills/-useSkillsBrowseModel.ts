@@ -1,5 +1,6 @@
+import { skillToPublic } from '../../lib/publicUser'
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { searchApi, skillsApi, type Skill } from '../../lib/api'
+import { searchApi, skillsApi } from '../../lib/api'
 import { parseDir, parseSort, type SortDir, type SortKey } from './-params'
 import type { SkillListEntry, SkillSearchEntry } from './-types'
 
@@ -352,23 +353,3 @@ export function useSkillsBrowseModel({
 }
 
 /** Convert API Skill to the shape expected by components */
-function skillToPublic(s: Skill): any {
-  return {
-    _id: s.id,
-    _creationTime: new Date(s.createdAt).getTime(),
-    slug: s.slug,
-    displayName: s.displayName,
-    summary: s.summary,
-    ownerUserId: s.ownerUserId,
-    stats: {
-      downloads: s.statsDownloads,
-      stars: s.statsStars,
-      versions: s.statsVersions,
-      comments: s.statsComments,
-    },
-    badges: s.badges,
-    tags: {},
-    createdAt: new Date(s.createdAt).getTime(),
-    updatedAt: new Date(s.updatedAt).getTime(),
-  }
-}
