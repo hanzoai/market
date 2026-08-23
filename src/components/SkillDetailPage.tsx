@@ -1,7 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import type { ClawdisSkillMetadata } from '@hanzoai/market-schema'
 import { useEffect, useMemo, useState } from 'react'
-import { skillsApi, type SkillBySlugResult } from '../lib/api'
+import { skillsApi, type SkillBySlugResult, type SkillVersion } from '../lib/api'
 import type { Doc, Id } from '../lib/types'
 import { canManageSkill, isModerator } from '../lib/roles'
 import { useAuthStatus } from '../lib/useAuthStatus'
@@ -47,6 +47,15 @@ function formatReportError(error: unknown) {
   }
 
   return 'Unable to submit report. Please try again.'
+}
+
+/** The versions endpoint sends `id`; everything downstream reads `_id`.
+ *  Filling it here is what makes `versionById` and the row keys address a
+ *  version at all — keyed on `_id` straight off the response, every one of
+ *  them was undefined. The cast covers the Doc fields this projection does not
+ *  carry (`files`, `_creationTime`, `skillId`); none is read off these rows. */
+function toVersionDoc(v: SkillVersion): Doc<'skillVersions'> {
+  return { ...v, _id: v.id } as unknown as Doc<'skillVersions'>
 }
 
 export function SkillDetailPage({
@@ -95,7 +104,7 @@ export function SkillDetailPage({
     if (!skill) return
     skillsApi
       .versions(slug, 50)
-      .then((r) => setVersions(r.items as any))
+      .then((r) => setVersions(r.items.map(toVersionDoc)))
       .catch(() => {})
   }, [skill, slug])
 
@@ -105,7 +114,7 @@ export function SkillDetailPage({
     if (!shouldLoadDiffVersions || !skill) return
     skillsApi
       .versions(slug, 200)
-      .then((r) => setDiffVersions(r.items as any))
+      .then((r) => setDiffVersions(r.items.map(toVersionDoc)))
       .catch(() => {})
   }, [shouldLoadDiffVersions, skill, slug])
 
