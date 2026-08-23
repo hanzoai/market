@@ -1,5 +1,8 @@
 /** API client for the market backend. */
 
+import type { Doc, Id } from './types'
+import type { PublicPersona, PublicSkill, PublicUser } from './publicUser'
+
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api'
 
 type FetchOptions = {
@@ -114,6 +117,42 @@ export type SkillVersion = {
   createdAt: string
 }
 
+/** The moderation state the detail endpoint reports for a skill. */
+export type SkillModerationInfo = {
+  isPendingScan: boolean
+  isMalwareBlocked: boolean
+  isSuspicious: boolean
+  isHiddenByMod: boolean
+  isRemoved: boolean
+  reason?: string
+}
+
+/** What `skillsApi.getDetail` answers with. Doc-shaped: `_id`, nested stats. */
+export type SkillBySlugResult = {
+  skill: Doc<'skills'> | PublicSkill
+  latestVersion: Doc<'skillVersions'> | null
+  owner: Doc<'users'> | PublicUser | null
+  pendingReview?: boolean
+  moderationInfo?: SkillModerationInfo | null
+  forkOf: {
+    kind: 'fork' | 'duplicate'
+    version: string | null
+    skill: { slug: string; displayName: string }
+    owner: { handle: string | null; userId: Id<'users'> | null }
+  } | null
+  canonical: {
+    skill: { slug: string; displayName: string }
+    owner: { handle: string | null; userId: Id<'users'> | null }
+  } | null
+} | null
+
+/** What `personasApi.getDetail` answers with. */
+export type PersonaBySlugResult = {
+  persona: PublicPersona
+  latestVersion: Doc<'personaVersions'> | null
+  owner: PublicUser | null
+} | null
+
 export const skillsApi = {
   list: (params?: { sort?: string; limit?: number; cursor?: string }) => {
     const qs = new URLSearchParams()
@@ -129,11 +168,11 @@ export const skillsApi = {
 
   /** Full skill detail with owner, versions, fork info. Returns Doc-shaped objects (_id, nested stats). */
   getDetail: (slug: string, opts?: { staff?: boolean }) =>
-    apiFetch<any>(`/v1/skills/${slug}/detail${opts?.staff ? '?staff=1' : ''}`),
+    apiFetch<SkillBySlugResult>(`/v1/skills/${slug}/detail${opts?.staff ? '?staff=1' : ''}`),
 
   /** Get existing skill for update flow — returns null if not found */
   getExisting: (slug: string) =>
-    apiFetch<any>(`/v1/skills/${slug}/detail`).catch(() => null),
+    apiFetch<SkillBySlugResult>(`/v1/skills/${slug}/detail`).catch(() => null),
 
   versions: (slug: string, limit = 50) =>
     apiFetch<{ items: SkillVersion[] }>(`/v1/skills/${slug}/versions?limit=${limit}`),
@@ -298,9 +337,9 @@ export const personasApi = {
     return apiFetch<{ items: any[] }>(`/v1/personas?${qs}`)
   },
 
-  getDetail: (slug: string) => apiFetch<any>(`/v1/personas/${slug}/detail`),
+  getDetail: (slug: string) => apiFetch<PersonaBySlugResult>(`/v1/personas/${slug}/detail`),
 
-  getExisting: (slug: string) => apiFetch<any>(`/v1/personas/${slug}/detail`).catch(() => null),
+  getExisting: (slug: string) => apiFetch<PersonaBySlugResult>(`/v1/personas/${slug}/detail`).catch(() => null),
 
   versions: (slug: string, limit = 50) =>
     apiFetch<{ items: any[] }>(`/v1/personas/${slug}/versions?limit=${limit}`),

@@ -9,14 +9,10 @@ import { type LlmAnalysis, SecurityScanResults } from './SkillSecurityScanResult
 import { SkillInstallCard } from './SkillInstallCard'
 import { UserBadge } from './UserBadge'
 
-export type SkillModerationInfo = {
-  isPendingScan: boolean
-  isMalwareBlocked: boolean
-  isSuspicious: boolean
-  isHiddenByMod: boolean
-  isRemoved: boolean
-  reason?: string
-}
+// Declared beside the endpoint that reports it; re-exported here because this
+// component has long been where callers import it from.
+export type { SkillModerationInfo } from '../lib/api'
+import type { SkillModerationInfo } from '../lib/api'
 
 type SkillFork = {
   kind: 'fork' | 'duplicate'
