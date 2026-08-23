@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
-import { githubImportApi } from '../lib/api'
+import { githubImportApi, type Candidate, type CandidatePreview } from '../lib/api'
 import { formatBytes } from '../lib/uploadUtils'
 import { useAuthStatus } from '../lib/useAuthStatus'
 
@@ -8,33 +8,7 @@ export const Route = createFileRoute('/import')({
   component: ImportGitHub,
 })
 
-type Candidate = {
-  path: string
-  readmePath: string
-  name: string | null
-  description: string | null
-}
 
-type CandidatePreview = {
-  resolved: {
-    owner: string
-    repo: string
-    ref: string
-    commit: string
-    path: string
-    repoUrl: string
-    originalUrl: string
-  }
-  candidate: Candidate
-  defaults: {
-    selectedPaths: string[]
-    slug: string
-    displayName: string
-    version: string
-    tags: string[]
-  }
-  files: Array<{ path: string; size: number; defaultSelected: boolean }>
-}
 
 function ImportGitHub() {
   const { isAuthenticated, isLoading, me } = useAuthStatus()
@@ -75,7 +49,7 @@ function ImportGitHub() {
     setIsBusy(true)
     try {
       const result = await githubImportApi.preview(url.trim())
-      const items = (result.candidates ?? []) as Candidate[]
+      const items = result.candidates ?? []
       setCandidates(items)
       if (items.length === 1) {
         const only = items[0]
@@ -98,10 +72,7 @@ function ImportGitHub() {
     setSelectedCandidatePath(candidatePath)
     setIsBusy(true)
     try {
-      const result = (await githubImportApi.previewCandidate(
-        url.trim(),
-        candidatePath,
-      )) as CandidatePreview
+      const result = await githubImportApi.previewCandidate(url.trim(), candidatePath)
       setPreview(result)
       setSlug(result.defaults.slug)
       setDisplayName(result.defaults.displayName)

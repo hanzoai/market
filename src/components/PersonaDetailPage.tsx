@@ -57,7 +57,7 @@ export function PersonaDetailPage({ slug }: PersonaDetailPageProps) {
     if (!persona) return
     personasApi
       .versions(slug, 50)
-      .then((r) => setVersions(r.items as any))
+      .then((r) => setVersions(r.items))
       .catch(() => {})
   }, [persona, slug])
 
