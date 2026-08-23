@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { skillsApi, telemetryApi, usersApi, type TelemetryResponse } from '../../lib/api'
+import { telemetryApi, usersApi, type TelemetryResponse } from '../../lib/api'
 import { SkillCard } from '../../components/SkillCard'
 import { SkillStatsTripletLine } from '../../components/SkillStats'
 import { getSkillBadges } from '../../lib/badges'

@@ -330,6 +330,22 @@ export const tokensApi = {
 }
 
 // ─── Personas API ──────────────────────────────────────────────────────────────
+/** A persona as the list endpoint sends it — flat, mirroring `Skill`. */
+export type Persona = {
+  id: string
+  slug: string
+  displayName: string
+  summary: string | null
+  ownerUserId: string
+  statsDownloads: number
+  statsStars: number
+  statsVersions: number
+  statsComments: number
+  createdAt: string
+  updatedAt: string
+  latestVersionId: string | null
+}
+
 /** A comment row as the personas endpoint reports it. Two spellings are
  *  tolerated because the server has answered both: a flat row with
  *  `userHandle`/`userDisplayName`, and one carrying a nested `user`. */
@@ -348,7 +364,7 @@ export const personasApi = {
   list: (params?: { limit?: number }) => {
     const qs = new URLSearchParams()
     if (params?.limit) qs.set('limit', String(params.limit))
-    return apiFetch<{ items: any[] }>(`/v1/personas?${qs}`)
+    return apiFetch<{ items: Persona[]; hasMore?: boolean }>(`/v1/personas?${qs}`)
   },
 
   getDetail: (slug: string) => apiFetch<PersonaBySlugResult>(`/v1/personas/${slug}/detail`),

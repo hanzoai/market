@@ -26,7 +26,6 @@ export default function Header() {
   const handle = me?.handle ?? me?.displayName ?? 'user'
   const initial = (me?.displayName ?? handle).charAt(0).toUpperCase()
   const isStaff = isModerator(me)
-  const signInRedirectTo = getCurrentRelativeUrl()
 
   const setTheme = (next: 'system' | 'light' | 'dark') => {
     startThemeTransition({
@@ -266,7 +265,3 @@ export default function Header() {
   )
 }
 
-function getCurrentRelativeUrl() {
-  if (typeof window === 'undefined') return '/'
-  return `${window.location.pathname}${window.location.search}${window.location.hash}`
-}

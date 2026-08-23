@@ -16,7 +16,7 @@ function Stars() {
     if (!me?.handle) return
     usersApi
       .stars(me.handle)
-      .then((r) => {
+      .then(() => {
         // Stars endpoint returns skill refs, fetch full skills
         // For now show stubs from the stars data
         setSkills([])

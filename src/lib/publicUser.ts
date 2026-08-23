@@ -1,4 +1,4 @@
-import type { Skill } from './api'
+import type { Persona, Skill } from './api'
 import type { Doc } from '../lib/types'
 
 export type PublicUser = Pick<
@@ -63,5 +63,28 @@ export function skillToPublic(s: Skill): PublicSkill {
     latestVersionId: null,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
+  }
+}
+
+/** A listed persona as the cards consume it. Mirrors `skillToPublic`, including
+ *  what the list omits. */
+export function personaToPublic(p: Persona): PublicPersona {
+  return {
+    _id: p.id,
+    _creationTime: new Date(p.createdAt).getTime(),
+    slug: p.slug,
+    displayName: p.displayName,
+    summary: p.summary,
+    ownerUserId: p.ownerUserId,
+    latestVersionId: p.latestVersionId,
+    tags: {},
+    stats: {
+      downloads: p.statsDownloads,
+      stars: p.statsStars,
+      versions: p.statsVersions,
+      comments: p.statsComments,
+    },
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
   }
 }
