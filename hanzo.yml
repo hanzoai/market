@@ -1,0 +1,39 @@
+# hanzoai/market — the skills and personas marketplace (bun + vite + a Hono API).
+#
+# Read by hanzoai/ci's build.yml and by platform.hanzo.ai. Every knob lives
+# here; .hanzo/workflows/cicd.yml is a caller and holds none.
+#
+# This replaced .github/workflows/{ci,deploy}.yml, which had never run: both
+# asked for `runs-on: ubuntu-latest`, a label no runner at git.hanzo.ai carries,
+# so every run queued against a machine that does not exist and was cancelled.
+# The lint those gates would have enforced had drifted to 53 errors and coverage
+# below the repo's own threshold in the meantime.
+test:
+  - name: gate
+    # One install, then the four questions the old ci.yml asked, in the order
+    # that fails cheapest first: lint before tests, tests before the coverage
+    # threshold they feed, and the build last because it is the slowest and the
+    # least likely to be the thing that broke.
+    #
+    # `--frozen-lockfile` so a gate cannot pass against dependencies no one
+    # committed.
+    run: |
+      set -e
+      command -v bun >/dev/null 2>&1 || {
+        curl -fsSL https://bun.sh/install | bash
+        export PATH="$HOME/.bun/bin:$PATH"
+      }
+      export PATH="$HOME/.bun/bin:$PATH"
+      bun install --frozen-lockfile
+      bun run lint
+      bun run test
+      bun run coverage
+      bunx tsc -p packages/schema/tsconfig.json --noEmit
+      bunx tsc -p packages/market/tsconfig.json --noEmit
+      bun run build
+
+images:
+  - name: market
+    context: .
+    dockerfile: Dockerfile
+    repo: ghcr.io/hanzoai/market
