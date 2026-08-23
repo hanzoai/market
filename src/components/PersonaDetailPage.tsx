@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { personasApi } from '../lib/api'
+import { personasApi, type PersonaBySlugResult } from '../lib/api'
 import type { Doc } from '../lib/types'
 import { PersonaStatsTripletLine } from './PersonaStats'
-import type { PublicPersona, PublicUser } from '../lib/publicUser'
+import type { PublicUser } from '../lib/publicUser'
 import { isModerator } from '../lib/roles'
 import { useAuthStatus } from '../lib/useAuthStatus'
 import { stripFrontmatter } from './skillDetailUtils'
@@ -13,11 +13,6 @@ type PersonaDetailPageProps = {
   slug: string
 }
 
-type PersonaBySlugResult = {
-  persona: PublicPersona
-  latestVersion: Doc<'personaVersions'> | null
-  owner: PublicUser | null
-} | null
 
 export function PersonaDetailPage({ slug }: PersonaDetailPageProps) {
   const { isAuthenticated, me } = useAuthStatus()
@@ -35,7 +30,7 @@ export function PersonaDetailPage({ slug }: PersonaDetailPageProps) {
     setResult(undefined)
     personasApi
       .getDetail(slug)
-      .then((data: any) => setResult(data as PersonaBySlugResult))
+      .then(setResult)
       .catch(() => setResult(null))
   }, [slug])
 

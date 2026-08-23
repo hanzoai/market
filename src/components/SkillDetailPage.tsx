@@ -1,14 +1,13 @@
 import { useNavigate } from '@tanstack/react-router'
 import type { ClawdisSkillMetadata } from '@hanzoai/market-schema'
 import { useEffect, useMemo, useState } from 'react'
-import { skillsApi } from '../lib/api'
+import { skillsApi, type SkillBySlugResult } from '../lib/api'
 import type { Doc, Id } from '../lib/types'
-import type { PublicSkill, PublicUser } from '../lib/publicUser'
 import { canManageSkill, isModerator } from '../lib/roles'
 import { useAuthStatus } from '../lib/useAuthStatus'
 import { SkillCommentsPanel } from './SkillCommentsPanel'
 import { SkillDetailTabs } from './SkillDetailTabs'
-import { SkillHeader, type SkillModerationInfo } from './SkillHeader'
+import { SkillHeader } from './SkillHeader'
 import { SkillReportDialog } from './SkillReportDialog'
 import {
   buildSkillHref,
@@ -24,23 +23,6 @@ type SkillDetailPageProps = {
   redirectToCanonical?: boolean
 }
 
-type SkillBySlugResult = {
-  skill: Doc<'skills'> | PublicSkill
-  latestVersion: Doc<'skillVersions'> | null
-  owner: Doc<'users'> | PublicUser | null
-  pendingReview?: boolean
-  moderationInfo?: SkillModerationInfo | null
-  forkOf: {
-    kind: 'fork' | 'duplicate'
-    version: string | null
-    skill: { slug: string; displayName: string }
-    owner: { handle: string | null; userId: Id<'users'> | null }
-  } | null
-  canonical: {
-    skill: { slug: string; displayName: string }
-    owner: { handle: string | null; userId: Id<'users'> | null }
-  } | null
-} | null
 
 type SkillFile = Doc<'skillVersions'>['files'][number]
 
@@ -98,7 +80,7 @@ export function SkillDetailPage({
     setResult(undefined)
     skillsApi
       .getDetail(slug, { staff: isStaff })
-      .then((data: any) => setResult(data as SkillBySlugResult))
+      .then(setResult)
       .catch(() => setResult(null))
   }, [slug, isStaff])
 
