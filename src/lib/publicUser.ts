@@ -1,3 +1,4 @@
+import type { Skill } from './api'
 import type { Doc } from '../lib/types'
 
 export type PublicUser = Pick<
@@ -37,3 +38,30 @@ export type PublicPersona = Pick<
   | 'createdAt'
   | 'updatedAt'
 >
+
+/** A list-endpoint row as the cards and detail views consume it. */
+export function skillToPublic(s: Skill): PublicSkill {
+  return {
+    _id: s.id,
+    _creationTime: new Date(s.createdAt).getTime(),
+    slug: s.slug,
+    displayName: s.displayName,
+    summary: s.summary,
+    ownerUserId: s.ownerUserId,
+    stats: {
+      downloads: s.statsDownloads,
+      stars: s.statsStars,
+      versions: s.statsVersions,
+      comments: s.statsComments,
+    },
+    badges: s.badges,
+    tags: {},
+    // The list endpoint does not carry these; null says so rather than leaving
+    // the reader to find out by reading undefined off a card.
+    forkOf: null,
+    canonicalSkillId: null,
+    latestVersionId: null,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  }
+}

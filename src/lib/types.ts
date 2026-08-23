@@ -40,7 +40,9 @@ export type Skill = {
   canonicalSkillId: string | null
   forkOf: { skillId: string; versionId: string; kind?: string } | null
   tags: Record<string, string>
-  badges: Record<string, { byUserId: string; at: number }> | null
+  // The raw column, handed through unshaped. Nothing reads a badge's value —
+  // every consumer asks only whether a key is present.
+  badges: Record<string, unknown> | null
   stats: {
     downloads: number
     stars: number
