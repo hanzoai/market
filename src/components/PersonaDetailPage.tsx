@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { personasApi, type PersonaBySlugResult } from '../lib/api'
+import { personasApi, type PersonaBySlugResult, type PersonaCommentRow } from '../lib/api'
 import type { Doc } from '../lib/types'
 import { PersonaStatsTripletLine } from './PersonaStats'
 import type { PublicUser } from '../lib/publicUser'
@@ -14,13 +14,26 @@ type PersonaDetailPageProps = {
 }
 
 
+type CommentEntry = {
+  comment: { _id?: string; body: string; userId: string; createdAt: string }
+  user: PublicUser | { handle: string | null; name?: string | null; _id?: string } | null
+}
+
+/** One row as the panel renders it, folding the endpoint's two spellings into one. */
+function toCommentEntry(item: PersonaCommentRow): CommentEntry {
+  return {
+    comment: { _id: item.id ?? item._id, body: item.body, userId: item.userId, createdAt: item.createdAt },
+    user: item.user ?? { handle: item.userHandle ?? null, name: item.userDisplayName, _id: item.userId },
+  }
+}
+
 export function PersonaDetailPage({ slug }: PersonaDetailPageProps) {
   const { isAuthenticated, me } = useAuthStatus()
 
   const [result, setResult] = useState<PersonaBySlugResult | undefined>(undefined)
   const [versions, setVersions] = useState<Doc<'personaVersions'>[] | undefined>(undefined)
   const [isStarred, setIsStarred] = useState<boolean | undefined>(undefined)
-  const [comments, setComments] = useState<Array<{ comment: any; user: PublicUser | null }> | undefined>(undefined)
+  const [comments, setComments] = useState<CommentEntry[] | undefined>(undefined)
   const [readme, setReadme] = useState<string | null>(null)
   const [readmeError, setReadmeError] = useState<string | null>(null)
   const [comment, setComment] = useState('')
@@ -63,12 +76,7 @@ export function PersonaDetailPage({ slug }: PersonaDetailPageProps) {
     personasApi
       .comments(slug)
       .then((r) =>
-        setComments(
-          r.items.map((item: any) => ({
-            comment: { _id: item.id ?? item._id, body: item.body, userId: item.userId, createdAt: item.createdAt },
-            user: item.user ?? { handle: item.userHandle, name: item.userDisplayName, _id: item.userId },
-          })),
-        ),
+        setComments(r.items.map(toCommentEntry)),
       )
       .catch(() => setComments([]))
   }, [persona, slug])
@@ -228,14 +236,9 @@ export function PersonaDetailPage({ slug }: PersonaDetailPageProps) {
                 void personasApi.addComment(slug, comment.trim()).then(() => {
                   setComment('')
                   // Refresh comments
-                  personasApi.comments(slug).then((r) =>
-                    setComments(
-                      r.items.map((item: any) => ({
-                        comment: { _id: item.id ?? item._id, body: item.body, userId: item.userId, createdAt: item.createdAt },
-                        user: item.user ?? { handle: item.userHandle, name: item.userDisplayName, _id: item.userId },
-                      })),
-                    ),
-                  )
+                  void personasApi
+                    .comments(slug)
+                    .then((r) => setComments(r.items.map(toCommentEntry)))
                 })
               }}
               className="comment-form"
@@ -269,15 +272,15 @@ export function PersonaDetailPage({ slug }: PersonaDetailPageProps) {
                       className="btn comment-delete"
                       type="button"
                       onClick={() => {
-                        void personasApi.deleteComment(slug, entry.comment._id).then(() => {
-                          personasApi.comments(slug).then((r) =>
-                            setComments(
-                              r.items.map((item: any) => ({
-                                comment: { _id: item.id ?? item._id, body: item.body, userId: item.userId, createdAt: item.createdAt },
-                                user: item.user ?? { handle: item.userHandle, name: item.userDisplayName, _id: item.userId },
-                              })),
-                            ),
-                          )
+                        // A row the endpoint sent without an id cannot be addressed;
+                        // deleting on `undefined` would ask the server to remove
+                        // whatever that resolves to.
+                        const id = entry.comment._id
+                        if (!id) return
+                        void personasApi.deleteComment(slug, id).then(() => {
+                          void personasApi
+                            .comments(slug)
+                            .then((r) => setComments(r.items.map(toCommentEntry)))
                         })
                       }}
                     >
