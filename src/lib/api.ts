@@ -45,19 +45,22 @@ export class ApiError extends Error {
 // ─── Token storage ──────────────────────────────────────────────────────────
 const TOKEN_KEY = 'market.session.token'
 
+// Reached through `window` rather than the bare global, which is what the guard
+// above actually tests. A context can have one without the other, and there the
+// guard passes and the bare global throws.
 export function getStoredToken(): string | null {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem(TOKEN_KEY)
+  return window.localStorage.getItem(TOKEN_KEY)
 }
 
 export function setStoredToken(token: string): void {
   if (typeof window === 'undefined') return
-  localStorage.setItem(TOKEN_KEY, token)
+  window.localStorage.setItem(TOKEN_KEY, token)
 }
 
 export function clearStoredToken(): void {
   if (typeof window === 'undefined') return
-  localStorage.removeItem(TOKEN_KEY)
+  window.localStorage.removeItem(TOKEN_KEY)
 }
 
 // ─── Auth API ───────────────────────────────────────────────────────────────
