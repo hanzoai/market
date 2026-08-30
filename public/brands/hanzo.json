@@ -38,7 +38,7 @@
   "chain": {
     "id": 36963,
     "name": "Hanzo Mainnet",
-    "rpcUrl": "https://api.hanzo.network/v1/bc/C/rpc",
+    "rpcUrl": "https://api.hanzo.network/v1/chain/C/rpc",
     "explorerUrl": "https://explore-hanzo.lux.network"
   },
   "peers": []
