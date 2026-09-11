@@ -1,4 +1,4 @@
-/// <reference path="../pb_data/types.d.ts" />
+/// <reference path="../base_/data/types.d.ts" />
 
 // Hanzo Market collections migration — maps the Drizzle schema to Base collections.
 // Run: ./base serve --migrationsDir ./hz_migrations
