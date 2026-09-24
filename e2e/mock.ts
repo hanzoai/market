@@ -13,6 +13,7 @@ export interface World {
   org: string
   sub: string
   clearance: 'clear' | 'needs' | 'absent'
+  cleared: Record<string, unknown>[]
   listings: Record<string, unknown>[]
   shop: Record<string, unknown>[]
   jobs: Record<string, unknown>[]
@@ -67,8 +68,22 @@ export function world(over: Partial<World> = {}): World {
     jobs: [],
     wallets: [],
     tax: null,
-    principal: { org: 'acme', name: 'Acme', kyc: { status: 'none' }, tax: { form: null, status: 'none' }, payout: {} },
+    principal: {
+      org: 'acme',
+      identity: { status: 'none', reason: 'No founder has started identity verification.' },
+      sanctions: { status: 'clear', reason: '' },
+      wallets: [],
+      compliance: {
+        ready: false,
+        missing: [
+          { code: 'identity', who: 'org', where: 'POST /v1/company/kyc', what: 'No founder has started identity verification.', rule: { code: 'identity', reason: '' } },
+          { code: 'tax_form', who: 'org', where: 'PUT /v1/tax/profile', what: 'Certify a W-9 (a U.S. person) or a W-8BEN or W-8BEN-E (a foreign person): a payer asks for it before it pays.', rule: { code: 'status_unknown', reason: '' } },
+        ],
+      },
+      sources: [],
+    },
     installed: [],
+    cleared: [],
     calls: [],
     ...over,
   }
@@ -182,29 +197,56 @@ async function api(route: Route, w: World) {
 
   // ── principal ──
   if (method === 'GET' && path === '/v1/principal') return w.principal ? json(route, 200, w.principal) : absent(route, path)
-  if (method === 'POST' && path === '/v1/principal/kyc') {
-    ;(w.principal!.kyc as Record<string, unknown>).status = 'pending'
-    return json(route, 200, { verifyUrl: 'https://verify.invalid/acme' })
+  if (method === 'POST' && path === '/v1/company/kyc') {
+    ;(w.principal!.identity as Record<string, unknown>).status = 'pending'
+    return json(route, 200, {
+      provider: 'persona',
+      sessions: [{ email: 'ada@acme.test', ref: 'inq_1', verifyUrl: 'https://verify.invalid/ada', status: 'pending' }],
+    })
   }
-  if (method === 'PUT' && path === '/v1/principal/payout') {
-    w.principal!.payout = { wallet: body.wallet }
-    return json(route, 200, w.principal)
-  }
-  if (method === 'GET' && path === '/v1/principal/clearance') {
+  if (method === 'POST' && path === '/v1/principal/clearance') {
+    w.cleared.push(body)
     if (w.clearance === 'absent') return absent(route, path)
+    const rule = { code: 'r', reason: '' }
+    const base = {
+      id: `clr_${w.cleared.length}`,
+      payer: w.org,
+      payee: body.payee,
+      amount: body.amount,
+      rail: body.rail,
+      status: 'us',
+      reporting_obligations: [],
+      facts_required: [],
+      rules: [],
+      decidedAt: NOW,
+      notice: 'A clearance is a decision on the facts the platform holds now.',
+    }
     if (w.clearance === 'needs')
-      return json(route, 200, {
-        status: 'needs',
-        needs: [{ kind: 'tax_form', party: 'buyer' }],
-        withholding: null,
+      return json(route, 201, {
+        ...base,
+        allowed: false,
+        required_before_payment: [
+          { code: 'payer_identity', who: 'payer', where: 'POST /v1/company/kyc', what: "The payer's founders complete identity verification: no founder has started.", rule },
+        ],
+        settlement_methods: [],
+        withholding: { reason: "Undetermined until the payee's status is documented.", rule },
       })
-    return json(route, 200, { status: 'clear', needs: [], withholding: { rate: 0.24, reason: 'the seller has not certified its TIN' } })
+    const amount = Number(body.amount)
+    const kept = (amount * 0.24).toFixed(2)
+    return json(route, 201, {
+      ...base,
+      allowed: true,
+      required_before_payment: [],
+      settlement_methods: [{ rail: 'ledger', net: (amount - Number(kept)).toFixed(2), withheld: kept, rule }],
+      withholding: { rate: '24', amount: kept, reason: 'The payee has not furnished a TIN, so backup withholding applies (IRC §3406).', rule },
+    })
   }
 
   // ── tax ──
   if (method === 'GET' && path === '/v1/tax/profile') return w.tax ? json(route, 200, w.tax) : absent(route, path)
   if (method === 'PUT' && path === '/v1/tax/profile') {
     w.tax = {
+      form: body.form ?? 'w9',
       name: body.name,
       businessName: body.businessName,
       classification: body.classification,
@@ -212,13 +254,15 @@ async function api(route: Route, w: World) {
       tin: '**-***6789',
       tinType: body.tinType,
       certification: { status: 'none' },
+      valid: false,
       version: 1,
       updatedAt: NOW,
     }
     return json(route, 200, w.tax)
   }
   if (method === 'POST' && path === '/v1/tax/profile/certify') {
-    w.tax = { ...w.tax!, certification: { status: 'certified' } }
+    w.tax = { ...w.tax!, certification: { status: 'certified' }, valid: true }
+    w.principal!.tax = { form: 'w9', usPerson: true, country: 'US', residence: 'US', certified: true, valid: true }
     return json(route, 200, w.tax)
   }
   if (method === 'GET' && path === '/v1/tax/inbox')

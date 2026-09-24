@@ -5,11 +5,11 @@ import { useState } from 'react'
 import { Text, XStack, YStack } from '@hanzo/ui'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 
-import { cleared, headline, steps, withholding } from '~/lib/clearance'
+import { cleared, facts, headline, net, todos, withholding } from '~/lib/clearance'
 import { notServed } from '~/lib/http'
-import { clearance, hire, install, shopListing, wallets, type Clearance, type Rail, type ShopListing } from '~/lib/market'
+import { clearance, hire, install, RAIL, shopListing, wallets, type Clearance, type ClearIn, type Rail, type ShopListing } from '~/lib/market'
 import { free, perCall, usd, valid } from '~/lib/money'
-import { useRead, useRun } from '~/lib/read'
+import { useRead, useRun, type Read } from '~/lib/read'
 import { Gate } from '~/gate'
 import { useSession } from '~/session'
 import { Act, Choice, Failed, Field, Go, Mark, Nothing, Page, Panel, Pending, Refusal, Section, Stages, Words } from '~/ui'
@@ -44,10 +44,15 @@ function Inner() {
 }
 
 function Flow({ listing, rail }: { listing: ShopListing; rail: Rail }) {
-  const check = useRead(() => clearance(listing.id, rail), [listing.id, rail])
   const [paid, setPaid] = useState(false)
+  const [asked, setAsked] = useState<ClearIn | null>(
+    rail === 'x402' && !free(listing.price) ? { payee: listing.publisherOrg, amount: listing.price, rail: RAIL.x402 } : null,
+  )
+  const check = useRead(asked ? () => clearance(asked) : null, [asked?.payee, asked?.amount, asked?.rail])
   const pending = notServed(check.status)
-  const ok = pending || (check.it !== null && cleared(check.it))
+  // A free listing moves no money, so there is nothing to clear.
+  const needed = rail === 'escrow' || !free(listing.price)
+  const ok = !needed || pending || (check.it !== null && cleared(check.it))
 
   return (
     <Page
@@ -57,27 +62,36 @@ function Flow({ listing, rail }: { listing: ShopListing; rail: Rail }) {
     >
       <Stages
         of={[
-          { label: '1 Clearance', stage: check.loading ? 'current' : ok ? 'done' : 'current' },
-          { label: '2 Pay', stage: paid ? 'done' : ok ? 'current' : 'todo' },
+          { label: '1 Clearance', stage: !needed || (asked && !check.loading && ok) ? 'done' : 'current' },
+          { label: '2 Pay', stage: paid ? 'done' : ok && (!needed || asked) ? 'current' : 'todo' },
           { label: rail === 'escrow' ? '3 Job opened' : '3 Installed', stage: paid ? 'done' : 'todo' },
         ]}
       />
 
-      <Section title="Clearance" says="Before any money moves, the platform checks that both sides can transact.">
-        <Cleared check={check.it} failed={check.failed} pending={pending} loading={check.loading} again={check.again} />
-      </Section>
-
-      <Section title="Payment">
-        {!ok ? (
-          <Text fontSize="$2" color="$quiet">
-            Finish clearance first.
-          </Text>
-        ) : rail === 'escrow' ? (
-          <Escrow listing={listing} />
-        ) : (
-          <PerCall listing={listing} onPaid={() => setPaid(true)} />
-        )}
-      </Section>
+      {rail === 'escrow' ? (
+        <Escrow listing={listing} asked={asked} onAsk={setAsked} ok={ok && asked !== null} check={check} pending={pending} />
+      ) : (
+        <>
+          <Section title="Clearance" says="Before any money moves, the platform decides whether your organization may pay this seller.">
+            {needed ? (
+              <Cleared check={check.it} failed={check.failed} pending={pending} loading={check.loading} again={check.again} />
+            ) : (
+              <Text fontSize="$2" color="$quiet">
+                Nothing to clear: this listing is free.
+              </Text>
+            )}
+          </Section>
+          <Section title="Payment">
+            {ok ? (
+              <PerCall listing={listing} onPaid={() => setPaid(true)} />
+            ) : (
+              <Text fontSize="$2" color="$quiet">
+                Finish clearance first.
+              </Text>
+            )}
+          </Section>
+        </>
+      )}
     </Page>
   )
 }
@@ -99,8 +113,8 @@ function Cleared({
   if (pending) {
     return (
       <Pending
-        what="Clearance check is not live yet"
-        says="api.hanzo.ai does not answer /v1/principal/clearance yet. The platform still enforces clearance when you pay, and any refusal it gives is shown below in its own words."
+        what="Clearance is not live yet"
+        says="api.hanzo.ai does not answer POST /v1/principal/clearance yet. The platform still enforces its rules when the payment moves, and any refusal is shown below in its own words."
       />
     )
   }
@@ -114,12 +128,12 @@ function Cleared({
       </YStack>
     )
   }
-  const todo = steps(check)
   const held = withholding(check)
+  const seller = net(check)
   return (
     <Panel>
       <Mark tone={cleared(check) ? 'up' : 'act'} says={headline(check)} />
-      {todo.map((s) => (
+      {todos(check.required_before_payment).map((s) => (
         <YStack key={s.title + s.body} gap="$1" py="$2" borderTopWidth={1} borderColor="$borderColor" data-need="">
           <Text fontSize="$3" color="$ink" fontWeight="500">
             {s.title}
@@ -134,6 +148,12 @@ function Cleared({
           ) : null}
         </YStack>
       ))}
+      {facts(check).map((f) => (
+        <Text key={f.question} fontSize="$2" color={f.blocks ? '$ink' : '$soft'} data-fact="">
+          {f.blocks ? 'Needed first: ' : 'Worth knowing: '}
+          {f.question}
+        </Text>
+      ))}
       {held ? (
         <Text fontSize="$2" color="$ink" data-withholding="">
           {held}
@@ -143,6 +163,11 @@ function Cleared({
           Nothing is withheld from this payment.
         </Text>
       )}
+      {seller ? (
+        <Text fontSize="$2" color="$soft">
+          {seller}
+        </Text>
+      ) : null}
     </Panel>
   )
 }
@@ -196,7 +221,22 @@ function PerCall({ listing, onPaid }: { listing: ShopListing; onPaid: () => void
   )
 }
 
-function Escrow({ listing }: { listing: ShopListing }) {
+/** Escrow: the amount decides the clearance, so the buyer states it first. */
+function Escrow({
+  listing,
+  asked,
+  onAsk,
+  ok,
+  check,
+  pending,
+}: {
+  listing: ShopListing
+  asked: ClearIn | null
+  onAsk: (c: ClearIn) => void
+  ok: boolean
+  check: Read<Clearance>
+  pending: boolean
+}) {
   const go = useNavigate()
   const mine = useRead(() => wallets(), [])
   const [brief, setBrief] = useState('')
@@ -205,55 +245,78 @@ function Escrow({ listing }: { listing: ShopListing }) {
   const { busy, failed, status, run } = useRun()
   const list = mine.it?.wallets ?? []
   const chosen = wallet || list[0]?.id || ''
-  const ready = brief.trim().length > 0 && valid(amount) && !free(amount) && chosen !== ''
+  const stated = valid(amount) && !free(amount)
+  const current = asked !== null && asked.amount === amount.trim()
+  const ready = brief.trim().length > 0 && stated && chosen !== '' && ok && current
 
   return (
-    <Panel gap="$4">
-      <Text fontSize="$3" color="$ink">
-        The amount is locked in an on-chain escrow when the job opens. The seller is paid only when you release it after
-        delivery; a dispute keeps the funds held until it is resolved.
-      </Text>
-      <Words label="What do you need done?" value={brief} set={setBrief} hint="Describe the job and what delivered looks like." />
-      <XStack gap="$3" flexWrap="wrap">
-        <Field label="Amount (USD)" value={amount} set={setAmount} hint="250.00" name="amount" />
-        {list.length ? (
-          <Choice
-            label="Fund from wallet"
-            value={chosen}
-            set={setWallet}
-            of={list.map((w) => ({ value: w.id, label: `${w.name} · ${w.chain}` }))}
-          />
+    <>
+      <Section title="The job" says="The amount is locked in an on-chain escrow when the job opens; the seller is paid only when you release it after delivery.">
+        <Panel gap="$4">
+          <Words label="What do you need done?" value={brief} set={setBrief} hint="Describe the job and what delivered looks like." />
+          <XStack gap="$3" flexWrap="wrap">
+            <Field label="Amount (USD)" value={amount} set={setAmount} hint="250.00" name="amount" />
+            {list.length ? (
+              <Choice
+                label="Fund from wallet"
+                value={chosen}
+                set={setWallet}
+                of={list.map((w) => ({ value: w.id, label: `${w.name} · ${w.chain}` }))}
+              />
+            ) : (
+              <YStack gap="$2" flex={1} minW={200}>
+                <Text fontSize="$2" color="$soft">
+                  Fund from wallet
+                </Text>
+                <Text fontSize="$2" color="$quiet">
+                  {mine.failed ? mine.failed : mine.it ? 'Your organization has no wallet yet.' : 'Loading wallets…'}
+                </Text>
+                {mine.it ? <Go to="/sell">Create a wallet</Go> : null}
+              </YStack>
+            )}
+          </XStack>
+          <XStack>
+            <Act
+              disabled={!stated || current}
+              onPress={() => onAsk({ payee: listing.publisherOrg, amount: amount.trim(), rail: RAIL.escrow, category: 'services' })}
+            >
+              {current ? 'Clearance checked' : 'Check clearance'}
+            </Act>
+          </XStack>
+        </Panel>
+      </Section>
+
+      <Section title="Clearance" says="Before any money moves, the platform decides whether your organization may pay this seller this amount.">
+        {asked ? (
+          <Cleared check={check.it} failed={check.failed} pending={pending} loading={check.loading} again={check.again} />
         ) : (
-          <YStack gap="$2" flex={1} minW={200}>
-            <Text fontSize="$2" color="$soft">
-              Fund from wallet
-            </Text>
-            <Text fontSize="$2" color="$quiet">
-              {mine.failed ? mine.failed : mine.it ? 'Your organization has no wallet yet.' : 'Loading wallets…'}
-            </Text>
-            {mine.it ? <Go to="/sell">Create a wallet</Go> : null}
-          </YStack>
+          <Text fontSize="$2" color="$quiet">
+            State the amount, then check clearance.
+          </Text>
         )}
-      </XStack>
-      <XStack items="center" gap="$3" flexWrap="wrap">
-        <Act
-          loud
-          disabled={!ready || busy}
-          onPress={() =>
-            void run(async () => {
-              const opened = await hire({ listing: listing.id, brief: brief.trim(), amount: amount.trim(), wallet: chosen })
-              await go(`/jobs/${encodeURIComponent(opened.id)}`)
-            })
-          }
-        >
-          {valid(amount) && !free(amount) ? `Fund ${usd(amount)} into escrow` : 'Fund escrow'}
-        </Act>
-      </XStack>
-      {failed && notServed(status) ? (
-        <Pending what="Escrow is not live yet" says="api.hanzo.ai does not answer POST /v1/marketplace/jobs yet." />
-      ) : (
-        <Refusal says={failed} />
-      )}
-    </Panel>
+      </Section>
+
+      <Section title="Payment">
+        <XStack items="center" gap="$3" flexWrap="wrap">
+          <Act
+            loud
+            disabled={!ready || busy}
+            onPress={() =>
+              void run(async () => {
+                const opened = await hire({ listing: listing.id, brief: brief.trim(), amount: amount.trim(), wallet: chosen })
+                await go(`/jobs/${encodeURIComponent(opened.id)}`)
+              })
+            }
+          >
+            {stated ? `Fund ${usd(amount)} into escrow` : 'Fund escrow'}
+          </Act>
+        </XStack>
+        {failed && notServed(status) ? (
+          <Pending what="Escrow is not live yet" says="api.hanzo.ai does not answer POST /v1/marketplace/jobs yet." />
+        ) : (
+          <Refusal says={failed} />
+        )}
+      </Section>
+    </>
   )
 }

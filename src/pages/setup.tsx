@@ -7,25 +7,26 @@ import { NavLink } from 'react-router'
 
 import { web } from '~/lib/api'
 import { notServed } from '~/lib/http'
+import { todos } from '~/lib/clearance'
 import {
   certifyTax,
   createAccount,
   createWallet,
   principal,
   saveTaxProfile,
-  setPayout,
   startKyc,
   taxProfile,
   wallets,
   type Classification,
   type Principal,
+  type TaxForm,
   type TaxProfile,
   type Wallet,
 } from '~/lib/market'
 import { useRead, useRun, type Read } from '~/lib/read'
 import { Gate } from '~/gate'
 import { useSession } from '~/session'
-import { Act, Choice, Failed, Field, Fields, Mark, Nothing, Page, Panel, Pending, Refusal, Section, Stages, Tick } from '~/ui'
+import { Act, Choice, Failed, Field, Fields, Go, Mark, Nothing, Page, Panel, Pending, Refusal, Section, Stages, Tick } from '~/ui'
 
 const SELL = [
   { to: '/sell', label: 'Set up' },
@@ -74,23 +75,24 @@ function Inner() {
   const tax = useRead(() => taxProfile(), [session.org])
   const mine = useRead(() => wallets(), [session.org])
 
-  const kyc = who.it?.kyc.status ?? (notServed(who.status) ? 'pending check' : '…')
-  const taxState = tax.it ? tax.it.certification.status : notServed(tax.status) ? 'none' : '…'
-  const payout = who.it?.payout.wallet ?? null
+  const identity = who.it?.identity.status ?? (notServed(who.status) ? 'not live' : '…')
+  const form = who.it?.tax ?? (tax.it ? { valid: tax.it.valid, certified: tax.it.certification.status === 'certified' } : null)
+  const taxState = form ? (form.valid ? 'valid' : form.certified ? 'certified' : 'on file') : tax.it === null && !tax.loading ? 'none' : '…'
+  const funded = (mine.it?.wallets.length ?? 0) > 0
 
   return (
     <Page
       eyebrow="Sell"
       title="Set up your organization"
-      says="Your organization is the seller: it is verified once, files one tax form, and is paid into one wallet. The same setup clears larger purchases."
+      says="Your organization is the seller: it is verified once, files one tax form, and is paid into its own wallet. The same setup clears larger purchases."
     >
       <SellNav />
       <Stages
         of={[
           { label: 'Signed in', stage: 'done' },
-          { label: `Identity: ${kyc}`, stage: who.it?.kyc.status === 'verified' ? 'done' : 'current' },
-          { label: `Tax form: ${taxState}`, stage: taxState === 'certified' ? 'done' : 'current' },
-          { label: payout ? 'Payout wallet set' : 'Payout wallet', stage: payout ? 'done' : 'todo' },
+          { label: `Identity: ${identity}`, stage: identity === 'verified' || identity === 'reviewer_confirmed' ? 'done' : 'current' },
+          { label: `Tax form: ${taxState}`, stage: form?.valid ? 'done' : 'current' },
+          { label: funded ? 'Wallet ready' : 'Wallet', stage: funded ? 'done' : 'todo' },
         ]}
       />
 
@@ -112,41 +114,69 @@ function Inner() {
               Acting as {session.org ?? 'your personal organization'}
             </Text>
           )}
+          <Owed read={who} />
         </Panel>
       </Section>
 
-      <Section title="Identity" says="Buyers and the platform need to know who is being paid.">
+      <Section title="Identity" says="Buyers and the platform need to know who is being paid. Each founder verifies once.">
         <Identity read={who} />
       </Section>
 
-      <Section title="Tax form" says="A W-9 if your organization is a US person, a W-8 if it is not. 1099s you receive are built from it.">
-        <Tax read={tax} />
+      <Section title="Tax form" says="A W-9 if your organization is a US person, a W-8 if it is not. The 1099s and 1042-Ss you receive are built from it.">
+        <Tax read={tax} onSaved={who.again} />
       </Section>
 
-      <Section title="Payout wallet" says="Sales settle here: x402 payments per call, and escrow when a buyer releases a job.">
-        <Payout wallets={mine} current={payout} payoutLive={!notServed(who.status)} onSet={who.again} onMade={mine.again} />
+      <Section title="Wallet" says="Sales settle into a wallet your organization holds: x402 payments per call, and escrow when a buyer releases a job. Each listing names the wallet it is paid into.">
+        <Payout wallets={mine} />
       </Section>
     </Page>
   )
 }
 
-function Identity({ read }: { read: Read<Principal> }) {
-  const { busy, failed, run } = useRun()
+/** What the platform says the org still lacks, in its own words. */
+function Owed({ read }: { read: Read<Principal> }) {
   if (notServed(read.status)) {
     return (
       <Pending
-        what="Seller verification is not live yet"
-        says="api.hanzo.ai does not answer /v1/principal yet. Your verification status appears here as soon as it does."
+        what="Principal status is not live yet"
+        says="api.hanzo.ai does not answer GET /v1/principal yet. What your organization still lacks to be paid appears here as soon as it does."
       />
     )
   }
   if (read.failed) return <Failed what="load your organization" why={read.failed} />
-  if (!read.it) return <Nothing says="Loading…" />
-  const kyc = read.it.kyc
+  if (!read.it) return null
+  const owed = todos(read.it.compliance.missing)
+  if (read.it.compliance.ready || !owed.length) return <Mark tone="up" says="Ready to pay and be paid" />
+  return (
+    <YStack gap="$2" data-owed="">
+      {owed.map((t) => (
+        <XStack key={t.body} gap="$2" items="flex-start">
+          <Mark tone="act" says={t.title} />
+          <Text fontSize="$2" color="$soft" flex={1}>
+            {t.body}
+          </Text>
+        </XStack>
+      ))}
+    </YStack>
+  )
+}
+
+function Identity({ read }: { read: Read<Principal> }) {
+  const { busy, failed, status, run } = useRun()
+  const [links, setLinks] = useState<{ email: string; verifyUrl: string }[]>([])
+  const verified = read.it && (read.it.identity.status === 'verified' || read.it.identity.status === 'reviewer_confirmed')
+  if (read.failed && !notServed(read.status)) return <Failed what="load your organization" why={read.failed} />
   return (
     <Panel>
-      <Mark tone={kyc.status === 'verified' ? 'up' : kyc.status === 'rejected' ? 'act' : 'quiet'} says={`Status: ${kyc.status}`} />
-      {kyc.status === 'verified' ? (
+      {read.it ? (
+        <Mark tone={verified ? 'up' : 'quiet'} says={`Status: ${read.it.identity.status}`} />
+      ) : null}
+      {read.it && !verified && read.it.identity.reason ? (
+        <Text fontSize="$2" color="$soft">
+          {read.it.identity.reason}
+        </Text>
+      ) : null}
+      {verified ? (
         <Text fontSize="$2" color="$soft">
           Verified. Nothing to do.
         </Text>
@@ -157,19 +187,34 @@ function Identity({ read }: { read: Read<Principal> }) {
             disabled={busy}
             onPress={() =>
               void run(async () => {
-                const { verifyUrl } = await startKyc()
-                const to = web(verifyUrl)
-                if (!to) throw new Error('The platform returned no verification address.')
-                window.open(to, '_blank', 'noopener')
+                const out = await startKyc()
+                const open = out.sessions.flatMap((x) => {
+                  const to = web(x.verifyUrl)
+                  return to ? [{ email: x.email, verifyUrl: to }] : []
+                })
+                if (!open.length) throw new Error('The platform opened no verification session.')
+                setLinks(open)
                 read.again()
               })
             }
           >
-            {kyc.status === 'pending' ? 'Continue verification' : 'Verify your organization'}
+            Verify your organization
           </Act>
         </XStack>
       )}
-      <Refusal says={failed} />
+      {links.map((l) => (
+        <XStack key={l.email} items="center" gap="$3" flexWrap="wrap" data-verify="">
+          <Text fontSize="$2" color="$ink" flex={1}>
+            {l.email}
+          </Text>
+          <Go to={l.verifyUrl}>Open verification</Go>
+        </XStack>
+      ))}
+      {failed && notServed(status) ? (
+        <Pending what="Identity verification is not live yet" says="api.hanzo.ai does not answer POST /v1/company/kyc yet." />
+      ) : (
+        <Refusal says={failed} />
+      )}
     </Panel>
   )
 }
@@ -185,7 +230,30 @@ const CLASSES: { value: Classification; label: string }[] = [
   { value: 'llc_p', label: 'LLC taxed as partnership' },
 ]
 
-function Tax({ read }: { read: Read<TaxProfile> }) {
+/** W-8BEN-E line 4 (the common ones; cloud apps/tax/w8.go holds the full list). */
+const CHAPTER3 = [
+  { value: 'corporation', label: 'Corporation' },
+  { value: 'partnership', label: 'Partnership (hybrid, claiming treaty benefits)' },
+  { value: 'disregarded', label: 'Disregarded entity (hybrid, claiming treaty benefits)' },
+  { value: 'complex_trust', label: 'Complex trust' },
+  { value: 'estate', label: 'Estate' },
+  { value: 'tax_exempt', label: 'Tax-exempt organization' },
+  { value: 'private_foundation', label: 'Private foundation' },
+]
+
+/** W-8BEN-E line 5, the FATCA status (the common ones). */
+const CHAPTER4 = [
+  { value: 'active_nffe', label: 'Active NFFE' },
+  { value: 'passive_nffe', label: 'Passive NFFE' },
+  { value: 'publicly_traded_nffe', label: 'Publicly traded NFFE' },
+  { value: 'excepted_startup', label: 'Excepted nonfinancial start-up company' },
+  { value: 'nonprofit', label: 'Nonprofit organization' },
+  { value: 'participating_ffi', label: 'Participating FFI' },
+]
+
+const LABEL: Record<TaxForm, string> = { w9: 'W-9', w8ben: 'W-8BEN', w8bene: 'W-8BEN-E' }
+
+function Tax({ read, onSaved }: { read: Read<TaxProfile>; onSaved: () => void }) {
   const { busy, failed, run } = useRun()
   const [editing, setEditing] = useState(false)
   // The profile is 404 until an admin writes one: that is "none on file", not an outage.
@@ -198,13 +266,15 @@ function Tax({ read }: { read: Read<TaxProfile> }) {
     const status = p.certification.status
     return (
       <Panel>
-        <Mark tone={status === 'certified' ? 'up' : 'quiet'} says={`${p.form === 'w8ben' || p.form === 'w8bene' ? 'W-8' : 'W-9'} · ${status}`} />
+        <Mark tone={p.valid ? 'up' : 'quiet'} says={`${LABEL[p.form ?? 'w9']} · ${status}${p.valid ? ' · valid' : ''}`} />
         <Text fontSize="$2" color="$soft">
-          {p.businessName || p.name} · TIN {p.tin}
+          {p.businessName || p.name}
+          {p.tin ? ` · TIN ${p.tin}` : ''}
+          {p.foreignTin ? ` · foreign TIN ${p.foreignTin}` : ''}
         </Text>
         <XStack gap="$2" flexWrap="wrap">
           {status !== 'certified' ? (
-            <Act loud disabled={busy} onPress={() => void run(async () => (await certifyTax(), read.again()))}>
+            <Act loud disabled={busy} onPress={() => void run(async () => (await certifyTax(), read.again(), onSaved()))}>
               Sign and certify
             </Act>
           ) : null}
@@ -214,12 +284,12 @@ function Tax({ read }: { read: Read<TaxProfile> }) {
       </Panel>
     )
   }
-  return <TaxForm onSaved={() => (setEditing(false), read.again())} />
+  return <TaxForm onSaved={() => (setEditing(false), read.again(), onSaved())} />
 }
 
 function TaxForm({ onSaved }: { onSaved: () => void }) {
   const { busy, failed, run } = useRun()
-  const [form, setForm] = useState<'w9' | 'w8'>('w9')
+  const [us, setUs] = useState(true)
   const [name, setName] = useState('')
   const [business, setBusiness] = useState('')
   const [klass, setKlass] = useState<Classification>('c_corp')
@@ -227,22 +297,46 @@ function TaxForm({ onSaved }: { onSaved: () => void }) {
   const [city, setCity] = useState('')
   const [state, setState] = useState('')
   const [zip, setZip] = useState('')
-  const [country, setCountry] = useState('')
+  const [residence, setResidence] = useState('')
   const [tinType, setTinType] = useState<'ein' | 'ssn'>('ein')
   const [tin, setTin] = useState('')
   const [entity, setEntity] = useState<'w8ben' | 'w8bene'>('w8bene')
+  const [citizen, setCitizen] = useState('')
+  const [birth, setBirth] = useState('')
+  const [chapter3, setChapter3] = useState('corporation')
+  const [chapter4, setChapter4] = useState('active_nffe')
+  const [capacity, setCapacity] = useState('')
   const [consent, setConsent] = useState(true)
 
-  const us = form === 'w9'
-  const ready = name.trim() && line1.trim() && city.trim() && (us ? state.trim() && zip.trim() && tin.trim() : country.trim())
+  const code2 = (v: string) => /^[A-Za-z]{2}$/.test(v.trim())
+  const ready = us
+    ? name.trim() && line1.trim() && city.trim() && code2(state) && /^\d{5}(\d{4})?$/.test(zip.replace(/\D/g, '')) && tin.trim()
+    : name.trim() && line1.trim() && city.trim() && code2(residence) && code2(citizen) && (entity === 'w8ben' || capacity.trim())
 
   const save = () =>
     void run(async () => {
-      const address = { line1: line1.trim(), city: city.trim(), state: state.trim(), zip: zip.trim(), country: us ? 'US' : country.trim() }
+      const address = {
+        line1: line1.trim(),
+        city: city.trim(),
+        state: state.trim().toUpperCase(),
+        zip: us ? zip.replace(/\D/g, '') : zip.trim(),
+        country: us ? 'US' : residence.trim().toUpperCase(),
+      }
       await saveTaxProfile(
         us
-          ? { form: 'w9', name: name.trim(), businessName: business.trim() || undefined, classification: klass, address, tin: tin.trim(), tinType, electronicConsent: consent }
-          : { form: entity, name: name.trim(), country: country.trim(), address, foreignTin: tin.trim() || undefined, electronicConsent: consent },
+          ? { form: 'w9', name: name.trim(), businessName: business.trim() || undefined, classification: klass, address, tin: tin.trim(), tinType: klass === 'individual' ? tinType : 'ein', electronicConsent: consent }
+          : {
+              form: entity,
+              name: name.trim(),
+              address,
+              foreignTin: tin.trim() || undefined,
+              w8: {
+                country: citizen.trim().toUpperCase(),
+                noForeignTin: tin.trim() ? undefined : true,
+                ...(entity === 'w8ben' ? { birth: birth.trim() || undefined } : { chapter3, chapter4, capacity: capacity.trim() }),
+              },
+              electronicConsent: consent,
+            },
       )
       onSaved()
     })
@@ -250,10 +344,10 @@ function TaxForm({ onSaved }: { onSaved: () => void }) {
   return (
     <Panel gap="$4">
       <XStack gap="$2" role="group" aria-label="Form">
-        <Act on={us} onPress={() => setForm('w9')}>
+        <Act on={us} onPress={() => setUs(true)}>
           W-9 · US person
         </Act>
-        <Act on={!us} onPress={() => setForm('w8')}>
+        <Act on={!us} onPress={() => setUs(false)}>
           W-8 · outside the US
         </Act>
       </XStack>
@@ -274,29 +368,51 @@ function TaxForm({ onSaved }: { onSaved: () => void }) {
         )}
       </Fields>
       {us ? <Choice label="Federal tax classification" value={klass} set={setKlass} of={CLASSES} /> : null}
+      {!us ? (
+        <Fields>
+          <Field
+            label={entity === 'w8ben' ? 'Country of citizenship (2 letters)' : 'Country of incorporation (2 letters)'}
+            value={citizen}
+            set={setCitizen}
+            hint="DE"
+            name="citizen"
+          />
+          {entity === 'w8ben' ? (
+            <Field label="Date of birth" value={birth} set={setBirth} hint="YYYY-MM-DD" name="birth" />
+          ) : (
+            <Field label="Signed by, in the capacity of" value={capacity} set={setCapacity} hint="Director" name="capacity" />
+          )}
+        </Fields>
+      ) : null}
+      {!us && entity === 'w8bene' ? (
+        <Fields>
+          <Choice label="Chapter 3 status (line 4)" value={chapter3} set={setChapter3} of={CHAPTER3} />
+          <Choice label="FATCA status (line 5)" value={chapter4} set={setChapter4} of={CHAPTER4} />
+        </Fields>
+      ) : null}
       <Fields>
-        <Field label="Address" value={line1} set={setLine1} name="line1" />
+        <Field label={us ? 'Address' : 'Permanent residence address'} value={line1} set={setLine1} name="line1" />
         <Field label="City" value={city} set={setCity} name="city" />
       </Fields>
       <Fields>
-        <Field label={us ? 'State' : 'Region'} value={state} set={setState} name="state" />
+        <Field label={us ? 'State (2 letters)' : 'Region'} value={state} set={setState} name="state" />
         <Field label={us ? 'ZIP' : 'Postal code'} value={zip} set={setZip} name="zip" />
-        {us ? null : <Field label="Country" value={country} set={setCountry} name="country" />}
+        {us ? null : <Field label="Country of residence (2 letters)" value={residence} set={setResidence} hint="DE" name="residence" />}
       </Fields>
       <Fields>
-        {us ? (
+        {us && klass === 'individual' ? (
           <Choice
             label="Taxpayer ID type"
             value={tinType}
             set={setTinType}
             of={[
-              { value: 'ein', label: 'EIN' },
               { value: 'ssn', label: 'SSN' },
+              { value: 'ein', label: 'EIN' },
             ]}
           />
         ) : null}
         <Field
-          label={us ? 'Taxpayer ID number' : 'Foreign tax ID (if any)'}
+          label={us ? (klass === 'individual' ? 'Taxpayer ID number' : 'EIN') : 'Foreign tax ID (leave empty if your country issues none)'}
           value={tin}
           set={setTin}
           type="password"
@@ -315,19 +431,7 @@ function TaxForm({ onSaved }: { onSaved: () => void }) {
   )
 }
 
-function Payout({
-  wallets: read,
-  current,
-  payoutLive,
-  onSet,
-  onMade,
-}: {
-  wallets: Read<{ wallets: Wallet[] }>
-  current: string | null
-  payoutLive: boolean
-  onSet: () => void
-  onMade: () => void
-}) {
+function Payout({ wallets: read }: { wallets: Read<{ wallets: Wallet[] }> }) {
   const { busy, failed, status, run } = useRun()
   if (read.failed) return <Failed what="load your wallets" why={read.failed} />
   if (!read.it) return <Nothing says="Loading…" />
@@ -337,49 +441,37 @@ function Payout({
     <Panel>
       {list.length ? (
         list.map((w) => (
-          <XStack key={w.id} items="center" gap="$3" flexWrap="wrap" py="$1">
+          <XStack key={w.id} items="center" gap="$3" flexWrap="wrap" py="$1" data-wallet="">
             <Text fontSize="$3" color="$ink" flex={1}>
               {w.name} · {w.chain}
             </Text>
             <Text fontSize="$1" color="$quiet" fontFamily="$mono" numberOfLines={1}>
               {w.address}
             </Text>
-            {current === w.id ? (
-              <Mark tone="up" says="Payouts go here" />
-            ) : (
-              <Act disabled={busy || !payoutLive} onPress={() => void run(async () => (await setPayout(w.id), onSet()))}>
-                Pay me here
-              </Act>
-            )}
           </XStack>
         ))
       ) : (
-        <Text fontSize="$2" color="$soft">
-          Your organization has no wallet yet.
-        </Text>
+        <>
+          <Text fontSize="$2" color="$soft">
+            Your organization has no wallet yet.
+          </Text>
+          <XStack>
+            <Act
+              loud
+              disabled={busy}
+              onPress={() =>
+                void run(async () => {
+                  const account = await createAccount('Payouts')
+                  await createWallet({ accountId: account.id, name: 'Payouts', custody: 'mpc' })
+                  read.again()
+                })
+              }
+            >
+              Create a payout wallet
+            </Act>
+          </XStack>
+        </>
       )}
-      {!payoutLive ? (
-        <Text fontSize="$1" color="$quiet">
-          Choosing a payout wallet opens when /v1/principal is live; until then a listing names its wallet directly.
-        </Text>
-      ) : null}
-      {!list.length ? (
-        <XStack>
-          <Act
-            loud
-            disabled={busy}
-            onPress={() =>
-              void run(async () => {
-                const account = await createAccount('Payouts')
-                await createWallet({ accountId: account.id, name: 'Payouts', custody: 'mpc' })
-                onMade()
-              })
-            }
-          >
-            Create a payout wallet
-          </Act>
-        </XStack>
-      ) : null}
       {failed && notServed(status) ? <Pending what="Not live yet" says={failed} /> : <Refusal says={failed} />}
     </Panel>
   )

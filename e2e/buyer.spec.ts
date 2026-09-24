@@ -47,16 +47,20 @@ test('browse → listing → sign in → clearance → escrow checkout opens a j
   await expect(page.getByRole('heading', { name: 'Sign in to continue' })).toBeVisible()
   await signIn(page, '/checkout/lst_research?rail=escrow')
 
-  // Clearance first, in plain words, with the withholding it will apply.
-  await expect(page.getByText('Cleared to pay')).toBeVisible()
-  await expect(page.locator('[data-withholding]')).toHaveText(
-    '24% of this payment is withheld and sent to the IRS as backup withholding: the seller has not certified its TIN',
-  )
-  expect(w.calls).toContain('GET /v1/principal/clearance?listing=lst_research&rail=escrow')
-
-  // Then escrow: open → accepted → delivered → released.
+  // The amount decides the clearance, so the buyer states it and asks.
   await page.getByRole('textbox', { name: 'What do you need done?' }).fill('A market map of MCP registries.')
   await expect(page.getByRole('textbox', { name: 'Amount (USD)' })).toHaveValue('250')
+  await page.getByRole('button', { name: 'Check clearance' }).click()
+
+  // Clearance, in plain words, with what it withholds and what the seller nets.
+  await expect(page.getByText('Cleared to pay')).toBeVisible()
+  await expect(page.locator('[data-withholding]')).toHaveText(
+    '24% ($60.00) of this payment is withheld: The payee has not furnished a TIN, so backup withholding applies (IRC §3406).',
+  )
+  await expect(page.getByText('The seller receives $190.00 after $60.00 is withheld.')).toBeVisible()
+  expect(w.cleared).toEqual([{ payee: 'orbital', amount: '250', rail: 'chain', category: 'services' }])
+
+  // Then escrow: open → accepted → delivered → released.
   await page.getByRole('button', { name: 'Fund $250.00 into escrow' }).click()
   await expect(page).toHaveURL(/\/jobs\/job_1$/)
   await expect(page.getByText('Open — funds held in escrow, waiting for the seller')).toBeVisible()
@@ -70,7 +74,8 @@ test('clearance that needs something says what, and holds payment', async ({ pag
   await page.goto('/checkout/lst_geocode?rail=x402')
   await signIn(page, '/checkout/lst_geocode?rail=x402')
   await expect(page.getByText('1 thing to finish before paying')).toBeVisible()
-  await expect(page.locator('[data-need]')).toContainText('Add a tax form')
+  await expect(page.locator('[data-need]')).toContainText("The payer's founders complete identity verification")
+  await expect(page.locator('[data-need]').getByRole('link', { name: 'Do this now' })).toHaveAttribute('href', '/sell')
   await expect(page.getByText('Finish clearance first.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Install and pay per call' })).toHaveCount(0)
 })
@@ -82,7 +87,7 @@ test('clearance not live yet shows pending, and x402 install still works', async
   await expect(page.getByText('$0.0025 per call').first()).toBeVisible()
   await page.getByRole('button', { name: 'Buy' }).click()
   await signIn(page, '/checkout/lst_geocode?rail=x402')
-  await expect(page.getByText('Clearance check is not live yet')).toBeVisible()
+  await expect(page.getByText('Clearance is not live yet')).toBeVisible()
   await page.getByRole('button', { name: 'Install and pay per call' }).click()
   await expect(page.getByText('Installed for acme')).toBeVisible()
   await expect(page.getByText(/Each call costs \$0\.0025 and settles over x402 to mapworks/)).toBeVisible()

@@ -49,24 +49,26 @@ test('seller onboarding → create listing → deliver a job → earnings', asyn
   await expect(page.getByRole('heading', { name: 'Set up your organization' })).toBeVisible()
   await expect(page.locator('[data-org]')).toHaveText('Acting as acme')
 
+  await expect(page.locator('[data-owed]')).toContainText('No founder has started identity verification.')
   await page.getByRole('button', { name: 'Verify your organization' }).click()
+  await expect(page.locator('[data-verify]')).toContainText('ada@acme.test')
+  await expect(page.getByRole('link', { name: 'Open verification' })).toHaveAttribute('href', 'https://verify.invalid/ada')
   await expect(page.getByText('Status: pending')).toBeVisible()
 
   await page.getByRole('textbox', { name: 'Legal name (as on your tax return)' }).fill('Acme Corporation')
   await page.getByRole('textbox', { name: 'Address' }).fill('1 Market St')
   await page.getByRole('textbox', { name: 'City' }).fill('San Francisco')
-  await page.getByRole('textbox', { name: 'State' }).fill('CA')
+  await page.getByRole('textbox', { name: 'State (2 letters)' }).fill('CA')
   await page.getByRole('textbox', { name: 'ZIP' }).fill('94105')
-  await page.getByLabel('Taxpayer ID number').fill('12-3456789')
+  await page.getByLabel('EIN').fill('12-3456789')
   await page.getByRole('button', { name: 'Save tax form' }).click()
   await expect(page.getByText('W-9 · none')).toBeVisible()
+  expect(w.tax).toMatchObject({ form: 'w9', address: { state: 'CA', zip: '94105', country: 'US' }, tinType: 'ein' })
   await page.getByRole('button', { name: 'Sign and certify' }).click()
-  await expect(page.getByText('W-9 · certified')).toBeVisible()
+  await expect(page.getByText('W-9 · certified · valid')).toBeVisible()
 
   await page.getByRole('button', { name: 'Create a payout wallet' }).click()
-  await page.getByRole('button', { name: 'Pay me here' }).click()
-  await expect(page.getByText('Payouts go here')).toBeVisible()
-  expect(w.principal).toMatchObject({ payout: { wallet: 'wal_acme' } })
+  await expect(page.locator('[data-wallet]')).toContainText('Payouts · lux')
 
   // A listing, from the org's own agents.
   await page.goto('/sell/listings/new')

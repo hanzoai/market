@@ -56,9 +56,8 @@ describe('market contract', () => {
     [() => m.authorSkill({ name: 'n', content: 'c' }), 'POST /v1/tool/skills'],
     [() => m.agents(), 'GET /v1/agent'],
     [() => m.principal(), 'GET /v1/principal'],
-    [() => m.startKyc(), 'POST /v1/principal/kyc'],
-    [() => m.setPayout('wal_1'), 'PUT /v1/principal/payout'],
-    [() => m.clearance('lst_1', 'x402'), 'GET /v1/principal/clearance?listing=lst_1&rail=x402'],
+    [() => m.startKyc(), 'POST /v1/company/kyc'],
+    [() => m.clearance({ payee: 'orbital', amount: '250', rail: m.RAIL.escrow }), 'POST /v1/principal/clearance'],
     [() => m.wallets(), 'GET /v1/wallet'],
     [() => m.createAccount('Payouts'), 'POST /v1/wallet/accounts'],
     [() => m.createWallet({ accountId: 'a', name: 'n', custody: 'mpc' }), 'POST /v1/wallet'],
@@ -86,8 +85,17 @@ describe('market contract', () => {
     await m.saveTaxProfile({ form: 'w9', name: 'Acme', classification: 'c_corp', address, tin: '12-3456789', tinType: 'ein', electronicConsent: true })
     expect(last()).toBe('PUT /v1/tax/profile')
     expect(calls.at(-1)!.body).toMatchObject({ form: 'w9', tinType: 'ein' })
-    await m.saveTaxProfile({ form: 'w8bene', name: 'Acme GmbH', country: 'DE', address, electronicConsent: true })
-    expect(calls.at(-1)!.body).toMatchObject({ form: 'w8bene', country: 'DE' })
+    await m.saveTaxProfile({
+      form: 'w8bene',
+      name: 'Acme GmbH',
+      address: { ...address, country: 'DE' },
+      foreignTin: 'DE123',
+      w8: { country: 'DE', chapter3: 'corporation', chapter4: 'active_nffe', capacity: 'Director' },
+      electronicConsent: true,
+    })
+    expect(calls.at(-1)!.body).toMatchObject({ form: 'w8bene', w8: { country: 'DE', chapter3: 'corporation' }, foreignTin: 'DE123' })
+    await m.clearance({ payee: 'orbital', amount: '250', rail: m.RAIL.escrow, category: 'services' })
+    expect(calls.at(-1)!.body).toEqual({ payee: 'orbital', amount: '250', rail: 'chain', category: 'services' })
   })
 
   it('fetches SKILL.md as text and a 1099 as a PDF', async () => {

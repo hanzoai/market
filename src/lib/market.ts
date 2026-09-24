@@ -3,7 +3,8 @@
 //
 // Operations marked SPECIFIED are the storefront's half of a contract cloud does
 // not serve yet; the types here are that contract. Pages call them and say "not
-// live yet" on a 404 rather than inventing an answer.
+// live yet" on a 404 rather than inventing an answer — which is also what they
+// say for an operation cloud has built but api.hanzo.ai does not route yet.
 
 import { blob, request, text } from '~/lib/http'
 
@@ -244,49 +245,95 @@ export interface Agent {
 
 export const agents = () => request<{ agents: Agent[] }>({ path: '/v1/agent' })
 
-// ── the org as economic principal ────────────────────────────────────────────
+// ── the org as economic principal (cloud apps/principals) ───────────────────
 
-export type KycStatus = 'none' | 'pending' | 'verified' | 'rejected'
+/** A rule the platform cites for a decision. */
+export interface Rule {
+  code: string
+  reason: string
+}
 
-/** SPECIFIED: GET /v1/principal. */
+/** Something that must happen before a payment (or that the org still lacks). */
+export interface Step {
+  code: string
+  /** In words, from the platform. */
+  what: string
+  /** payer, payee, org, none, or "Hanzo platform reviewer". */
+  who: string
+  /** The operation that satisfies it, e.g. "PUT /v1/tax/profile". */
+  where?: string
+  rule: Rule
+}
+
+export interface WalletBrief {
+  id: string
+  name: string
+  chain?: string
+  address: string
+  custody: string
+}
+
+/** GET /v1/principal — the caller's org as an economic principal. */
 export interface Principal {
   org: string
-  name: string
-  kyc: { status: KycStatus; verifyUrl?: string }
-  tax: { form: TaxForm | null; status: 'none' | 'pending' | 'certified' }
-  payout: { wallet?: string }
+  identity: { status: string; reason: string }
+  entity?: { name: string; structure: string; jurisdiction: string; stage: string }
+  tax?: { form: TaxForm; usPerson: boolean; country: string; residence: string; certified: boolean; valid: boolean; expires?: number }
+  sanctions: { status: string; reason: string }
+  wallets: WalletBrief[]
+  compliance: { ready: boolean; missing: Step[] }
+  sources: { app: string; status: string }[]
 }
 
 export const principal = () => request<Principal>({ path: '/v1/principal' })
 
-/** SPECIFIED: POST /v1/principal/kyc — start the org's own verification. */
-export const startKyc = () => request<{ verifyUrl: string }>({ method: 'POST', path: '/v1/principal/kyc', body: {} })
+/** POST /v1/company/kyc — open an identity-verification session per founder. */
+export const startKyc = () =>
+  request<{ provider: string; sessions: { email: string; ref: string; verifyUrl: string; status: string }[] }>({
+    method: 'POST',
+    path: '/v1/company/kyc',
+    body: {},
+  })
 
-/** SPECIFIED: PUT /v1/principal/payout. */
-export const setPayout = (wallet: string) =>
-  request<Principal>({ method: 'PUT', path: '/v1/principal/payout', body: { wallet } })
-
+/** How a storefront payment moves: per call over x402, or into on-chain escrow. */
 export type Rail = 'x402' | 'escrow'
 
-export type NeedKind = 'sign_in' | 'kyc' | 'tax_form' | 'payout_wallet' | 'billing' | 'payer_wallet'
+/** The rail name clearance knows each storefront rail by. */
+export const RAIL: Record<Rail, string> = { x402: 'x402', escrow: 'chain' }
 
-export interface Need {
-  kind: NeedKind
-  party: 'buyer' | 'seller'
-  detail?: string
+/** POST /v1/principal/clearance — a payment the caller means to make. */
+export interface ClearIn {
+  /** The org to be paid. */
+  payee: string
+  /** Gross USD, "1250.00". */
+  amount: string
+  category?: 'services' | 'attorney' | 'rents' | 'royalties' | 'other' | 'merchandise'
+  rail?: string
+  /** ISO 3166-1 alpha-2 where the service is performed. */
+  performed?: string
 }
 
-/** SPECIFIED: GET /v1/principal/clearance?listing=&rail=. */
+/** The platform's decision on one payment, made before it and recorded. */
 export interface Clearance {
-  status: 'clear' | 'needs' | 'blocked'
-  needs: Need[]
-  /** Backup withholding the platform will apply to this payment, if any. */
-  withholding: { rate: number; reason: string } | null
-  reason?: string
+  id: string
+  payer: string
+  payee: string
+  amount: string
+  rail: string
+  allowed: boolean
+  /** What the payer may treat the payee as: us, foreign or unknown. */
+  status: string
+  required_before_payment: Step[]
+  reporting_obligations: { code: string; form: string; filer: string; jurisdiction: string; due: string; rule: Rule }[]
+  settlement_methods: { rail: string; net: string; withheld: string; rule: Rule }[]
+  withholding: { chapter?: string; rate?: string; amount?: string; reason: string; rule: Rule }
+  facts_required: { code: string; question: string; blocks: boolean; rule: Rule }[]
+  decidedAt: number
+  notice: string
 }
 
-export const clearance = (listing: string, rail: Rail) =>
-  request<Clearance>({ path: '/v1/principal/clearance', query: { listing, rail } })
+export const clearance = (req: ClearIn) =>
+  request<Clearance>({ method: 'POST', path: '/v1/principal/clearance', body: req })
 
 // ── wallets ──────────────────────────────────────────────────────────────────
 
@@ -309,7 +356,7 @@ export const createWallet = (req: { accountId: string; name: string; custody: 'm
 
 // ── tax ──────────────────────────────────────────────────────────────────────
 
-/** W-9 is served today; W-8BEN / W-8BEN-E are SPECIFIED. */
+/** Form W-9 (a U.S. person), W-8BEN (a foreign individual), W-8BEN-E (a foreign entity). */
 export type TaxForm = 'w9' | 'w8ben' | 'w8bene'
 
 export type Classification =
@@ -328,22 +375,42 @@ export interface Address {
   city: string
   state: string
   zip: string
+  /** ISO 3166-1 alpha-2; US on a W-9. */
   country?: string
 }
 
+/** What a W-8 certifies beyond name and address (W-8BEN / W-8BEN-E lines). */
+export interface W8Facts {
+  /** Line 2: country of citizenship or incorporation, alpha-2. */
+  country: string
+  /** W-8BEN-E line 4. */
+  chapter3?: string
+  /** W-8BEN-E line 5, the FATCA status. */
+  chapter4?: string
+  noForeignTin?: boolean
+  /** W-8BEN line 8, YYYY-MM-DD. */
+  birth?: string
+  /** Who signs a W-8BEN-E, e.g. "Director". */
+  capacity?: string
+}
+
 export interface TaxProfile {
+  form: TaxForm
   name: string
   businessName?: string
   classification?: Classification
   address: Address
+  /** Masked. */
   tin: string
   tinType?: 'ssn' | 'ein'
+  foreignTin?: string
+  w8?: W8Facts
   consent?: { electronic: boolean }
   certification: { status: 'none' | 'pending' | 'certified' }
+  valid: boolean
+  expires?: number
   version: number
   updatedAt: number
-  /** SPECIFIED with W-8: which form this profile is. Absent means W-9. */
-  form?: TaxForm
 }
 
 export interface W9 {
@@ -357,14 +424,13 @@ export interface W9 {
   electronicConsent: boolean
 }
 
-/** SPECIFIED: a non-US person or entity certifies foreign status. */
 export interface W8 {
   form: 'w8ben' | 'w8bene'
   name: string
-  country: string
   address: Address
+  tin?: string
   foreignTin?: string
-  treaty?: { country: string; article: string; rate: number }
+  w8: W8Facts
   electronicConsent: boolean
 }
 
