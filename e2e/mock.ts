@@ -94,8 +94,17 @@ const APPS = [
 
 const SKILLS = {
   base_url: 'https://api.hanzo.ai',
-  skill_count: 1,
-  skills: [{ name: 'vector-search', service: 'vector', description: 'Search embeddings by meaning.', path: '/vector-search/SKILL.md' }],
+  skill_count: 61,
+  skills: [
+    { name: 'vector-search', service: 'vector', description: 'Search embeddings by meaning.', path: 'vector-search/SKILL.md' },
+    // The live directory is hundreds of per-operation skills; sixty is enough to page.
+    ...Array.from({ length: 60 }, (_, i) => ({
+      name: `op_${String(i).padStart(2, '0')}`,
+      service: 'ops',
+      description: `Operation ${i}.`,
+      path: `op_${i}/SKILL.md`,
+    })),
+  ],
 }
 
 const json = (route: Route, status: number, body: unknown, headers: Record<string, string> = {}) =>

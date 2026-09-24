@@ -13,6 +13,9 @@ import { useRead } from '~/lib/read'
 import { useSession } from '~/session'
 import { Act, Column, Eyebrow, Failed, Nothing } from '~/ui'
 
+/** Cards drawn per page. The skills directory alone is hundreds of entries. */
+export const PAGE = 48
+
 interface Found {
   items: Item[]
   /** One sentence per source that could not answer, keyed by source. */
@@ -54,7 +57,9 @@ export function Browse({ kind }: { kind?: Kind }) {
   const q = params.get('q') ?? ''
   const type: Kind | '' = kind ?? ''
   const [draft, setDraft] = useState(q)
+  const [pages, setPages] = useState(1)
   useEffect(() => setDraft(q), [q])
+  useEffect(() => setPages(1), [q, type])
 
   const found = useRead(session.loading ? null : () => find(q, session.signedIn), [q, session.loading, session.signedIn])
   const all = found.it?.items ?? []
@@ -133,10 +138,17 @@ export function Browse({ kind }: { kind?: Kind }) {
           <Nothing says={q ? `Nothing matches “${q}”.` : 'Nothing here yet.'} />
         ) : null}
         <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-          {shown.map((item) => (
+          {shown.slice(0, pages * PAGE).map((item) => (
             <Card key={item.key} item={item} />
           ))}
         </Box>
+        {shown.length > pages * PAGE ? (
+          <XStack justify="center" pt="$4">
+            <Act onPress={() => setPages((n) => n + 1)}>
+              Show more · {shown.length - pages * PAGE} left
+            </Act>
+          </XStack>
+        ) : null}
       </Column>
     </YStack>
   )

@@ -14,8 +14,13 @@ test('browse → listing → sign in → clearance → escrow checkout opens a j
   await expect(page.getByRole('heading', { name: 'Agents, apps, skills and MCP servers' })).toBeVisible()
   await expect(page.locator('[data-item="listing:lst_research"]')).toBeVisible()
   await expect(page.locator('[data-item="app:hanzo/chat"]')).toBeVisible()
-  await expect(page.locator('[data-item="skill:vector-search"]')).toBeVisible()
   await expect(page.locator('[data-note="mcp"]')).toContainText('Sign in to include MCP servers')
+
+  // Sixty-odd skills page 48 at a time.
+  await expect(page.locator('[data-item]')).toHaveCount(48)
+  await page.getByRole('button', { name: 'Show more · 16 left' }).click()
+  await expect(page.locator('[data-item]')).toHaveCount(64)
+  await expect(page.locator('[data-item="skill:vector-search"]')).toBeVisible()
 
   await page.getByRole('button', { name: /^Agents/ }).click()
   await expect(page).toHaveURL(/\/agents$/)
