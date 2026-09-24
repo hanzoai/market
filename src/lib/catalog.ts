@@ -91,7 +91,14 @@ export function matches(item: Item, q: string): boolean {
   return words.every((w) => hay.includes(w))
 }
 
-/** Listings first (they are what sellers publish), then by title; one entry per key. */
+/**
+ * The order kinds are shown in when nothing narrows them: what people hire and
+ * run first, then the skills directory, which is hundreds of per-operation
+ * entries and would otherwise fill every page ahead of them.
+ */
+const RANK: Record<Kind, number> = { agent: 0, app: 1, mcp: 2, skill: 3 }
+
+/** Listings first (they are what sellers publish), then by kind, then by title; one entry per key. */
 export function merge(parts: Item[][]): Item[] {
   const seen = new Set<string>()
   const out: Item[] = []
@@ -100,7 +107,9 @@ export function merge(parts: Item[][]): Item[] {
     seen.add(item.key)
     out.push(item)
   }
-  return out.toSorted((a, b) => Number(b.listed) - Number(a.listed) || a.title.localeCompare(b.title))
+  return out.toSorted(
+    (a, b) => Number(b.listed) - Number(a.listed) || RANK[a.kind] - RANK[b.kind] || a.title.localeCompare(b.title),
+  )
 }
 
 export function facets(items: Item[]): Record<Kind, number> {

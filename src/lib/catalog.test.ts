@@ -52,13 +52,15 @@ describe('catalog', () => {
     expect(matches(item, 'deep nothing')).toBe(false)
   })
 
-  it('merges listings first, then by title, once per key', () => {
-    const a = fromApp({ ...app, title: 'Alpha' })
-    const z = fromSkill({ name: 'zeta', service: 's', description: '', path: '' })
-    const l = fromListing(listing)
-    const out = merge([[z, a], [l, a]])
-    expect(out.map((i) => i.key)).toEqual(['listing:lst_1', 'app:hanzo/chat', 'skill:zeta'])
-    expect(facets(out)).toEqual({ agent: 1, app: 1, skill: 1, mcp: 0 })
+  it('merges listings first, then by kind, then by title, once per key', () => {
+    const a = fromApp({ ...app, title: 'Zulu' })
+    const b = fromApp({ ...app, id: 'hanzo/b', name: 'b', title: 'Bravo' })
+    const s = fromSkill({ name: '3d_3d', service: 's', description: '', path: '' })
+    const m = fromMcp(mcp)
+    const l = fromListing({ ...listing, kind: 'skill' })
+    const out = merge([[s, a], [l, a, m, b]])
+    expect(out.map((i) => i.key)).toEqual(['listing:lst_1', 'app:hanzo/b', 'app:hanzo/chat', 'mcp:com.stripe_mcp', 'skill:3d_3d'])
+    expect(facets(out)).toEqual({ agent: 0, app: 2, skill: 2, mcp: 1 })
   })
 
   it('knows the four kinds', () => {
