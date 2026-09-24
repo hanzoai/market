@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" class="t_dark" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Hanzo Market</title>
+    <meta name="description" content="Agents, apps, skills and MCP servers — install them, hire them, or sell your own." />
+    <meta property="og:site_name" content="Hanzo Market" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Hanzo Market" />
+    <meta property="og:description" content="Agents, apps, skills and MCP servers — install them, hire them, or sell your own." />
+    <meta property="og:image" content="https://hanzo.market/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="manifest" href="/manifest.json" />
+    <style>
+      /* The two things only the host document can answer: the page ground before
+         any module runs, and that the app fills the window. */
+      html { background: #0a0a0a; }
+      html.light { background: #f7f7f7; }
+      #root { display: flex; flex-direction: column; min-height: 100dvh; }
+    </style>
+    <script>
+      /* Keep gui's theme class in step with next-themes': next-themes writes
+         `light` on <html>, gui reads `t_light` / `t_dark`. Inline, because the
+         first paint happens before any module runs. */
+      ;(function () {
+        var e = document.documentElement, was
+        function s() {
+          var l = e.classList.contains('light')
+          if (l === was) return
+          was = l
+          e.classList.toggle('t_light', l)
+          e.classList.toggle('t_dark', !l)
+        }
+        s()
+        new MutationObserver(s).observe(e, { attributes: true, attributeFilter: ['class'] })
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

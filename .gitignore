@@ -1,32 +1,15 @@
 node_modules
-.DS_Store
-.bun-build
-*.bun-build
-bin/docs-list
 dist
-dist-ssr
-!packages/schema/dist
-!packages/schema/dist/**
-*.local
-.vercel
-count.txt
-.env
-.nitro
-.tanstack
-.wrangler
-.output
-.vinxi
-todos.json
-.cta.json
-.vscode
-.env*.local
 coverage
-playwright-report
 test-results
-.playwright
+playwright-report
+.DS_Store
+.env
+.env*.local
+*.tsbuildinfo
 
-# Build-time brand artifacts (generated from src/brand/presets/<BRAND_ID>.json
-# by scripts/generate-well-known.ts; source of truth is the preset).
-public/brand.json
-public/.well-known/brand.json
-public/.well-known/market.json
+# Agent memory stays local
+LLM.md
+AGENTS.md
+CLAUDE.md
+GEMINI.md

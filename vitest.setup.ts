@@ -1,11 +1,10 @@
 /**
  * The runtime ships an experimental `localStorage` that shadows jsdom's and is
- * inert unless started with `--localstorage-file`, so both `localStorage` and
- * `window.localStorage` are undefined under test. Anything reading a stored
- * token therefore threw rather than returning null, which is how a real crash
- * in `getStoredToken` stayed invisible to the suite.
+ * inert unless started with `--localstorage-file`, so under test both
+ * `localStorage` and `window.localStorage` would be undefined and every read of
+ * the stored session would throw instead of answering null.
  *
- * A per-test in-memory store restores the browser's semantics: values are
+ * A per-file in-memory store restores the browser's semantics: values are
  * strings, missing keys are null, and each file starts empty.
  */
 class MemoryStorage implements Storage {

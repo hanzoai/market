@@ -1,0 +1,19 @@
+# Triggers plus the import, and nothing else: every knob is the repo-root
+# hanzo.yml, which platform.hanzo.ai reads too. The job runs on Hanzo's own
+# fleet; hanzoai/ci resolves the reusable from .github/workflows.
+name: CI/CD
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cicd:
+    uses: hanzoai/ci/.github/workflows/build.yml@v2
+    secrets: inherit

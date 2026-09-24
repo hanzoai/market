@@ -6,15 +6,5 @@
   "experimentalSortPackageJson": {
     "sortScripts": true,
   },
-  "ignorePatterns": [
-    ".output/",
-    ".tanstack/",
-    "convex/_generated/",
-    "coverage/",
-    "dist/",
-    "node_modules/",
-    "public/",
-    "src/routeTree.gen.ts",
-    "test-results/",
-  ],
+  "ignorePatterns": ["coverage/", "dist/", "node_modules/", "public/", "test-results/"],
 }

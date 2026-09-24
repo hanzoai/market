@@ -3,7 +3,7 @@
   "name": "Hanzo Market",
   "icons": [
     {
-      "src": "hanzo-favicon.svg",
+      "src": "favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
     },
@@ -13,8 +13,8 @@
       "type": "image/x-icon"
     }
   ],
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#000000"
+  "theme_color": "#0a0a0a",
+  "background_color": "#0a0a0a"
 }

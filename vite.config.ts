@@ -1,71 +1,75 @@
-import tailwindcss from '@tailwindcss/vite'
-import { devtools } from '@tanstack/devtools-vite'
-import { tanstackStart } from '@tanstack/react-start/plugin/vite'
-import viteReact from '@vitejs/plugin-react'
-import { nitro } from 'nitro/vite'
-import { defineConfig } from 'vite'
-import viteTsConfigPaths from 'vite-tsconfig-paths'
+import { hanzo } from '@hanzo/vite'
+import react from '@vitejs/plugin-react'
 
-import { generateWellKnown } from './scripts/generate-well-known'
+/**
+ * hanzo.market is a static storefront: `vite build` writes dist/, and the sites
+ * plane serves it. There is no server in this repo — every read and write goes
+ * to api.hanzo.ai.
+ *
+ * `hanzo()` resolves the Hanzo runtime (react-native-web, web-first extensions,
+ * one copy of gui) the same way every Hanzo Vite app does.
+ */
+const API = 'https://api.hanzo.ai'
 
-const BRAND_ID = (process.env.BRAND_ID ?? 'generic').trim() || 'generic'
-
-// LP-0010 §4.1 — emits public/brand.json (legacy mashed shape, for loader.ts)
-// AND public/.well-known/{brand,<appId>}.json (split shape, for federation).
-generateWellKnown(BRAND_ID)
-
-function handleRollupWarning(
-  warning: { code?: string; message: string; id?: string },
-  warn: (warning: { code?: string; message: string; id?: string }) => void,
-) {
-  if (
-    warning.code === 'MODULE_LEVEL_DIRECTIVE' &&
-    warning.id?.includes('node_modules') &&
-    /use client/i.test(warning.message)
-  ) {
-    return
-  }
-  if (
-    warning.code === 'UNUSED_EXTERNAL_IMPORT' &&
-    /@tanstack\/start-|@tanstack\/router-core\/ssr\/(client|server)/.test(warning.message)
-  ) {
-    return
-  }
-  if (warning.code === 'EMPTY_BUNDLE' || /Generated an empty chunk/i.test(warning.message)) {
-    return
-  }
-  warn(warning)
+/**
+ * Same-origin in front of the gateway on the dev server and on a preview of a
+ * build. api.hanzo.ai admits an origin by allowlist; a localhost port is not on
+ * it, so a local page asks its own origin and this proxy forwards. The skills
+ * directory is served from the gateway's /.well-known, so it is proxied too.
+ */
+const proxy = {
+  '/v1': { target: API, changeOrigin: true },
+  '/.well-known/agent-skills': { target: API, changeOrigin: true },
 }
 
-const config = defineConfig({
-  define: {
-    __BUILD_BRAND_ID__: JSON.stringify(BRAND_ID),
+/**
+ * Pinned because it is half of a redirect: IAM returns the browser to the exact
+ * `redirect_uri` registered for the hanzo-market client, port included.
+ */
+const PORT = 3330
+
+/**
+ * The sites plane serves `index.html` for any page-shaped path (spaMode), and a
+ * static host without that answers the site's `404.html`. Writing the document
+ * under both names makes every deep link land on the app either way.
+ */
+const spaFallback = {
+  name: 'spa-fallback',
+  async writeBundle(options: { dir?: string }) {
+    const { copyFile } = await import('node:fs/promises')
+    const { join } = await import('node:path')
+    const dir = options.dir ?? 'dist'
+    await copyFile(join(dir, 'index.html'), join(dir, '404.html'))
   },
-  resolve: {
-    dedupe: ['react', 'react-dom'],
+}
+
+const config = hanzo(
+  {
+    plugins: [react(), spaFallback],
+    server: { port: PORT, allowedHosts: true, proxy },
+    preview: { port: PORT, allowedHosts: true, proxy },
   },
-  plugins: [
-    devtools(),
-    nitro({
-      serverDir: 'server',
-      rollupConfig: {
-        onwarn: handleRollupWarning,
-      },
-    }),
-    // this is the plugin that enables path aliases
-    viteTsConfigPaths({
-      projects: ['./tsconfig.json'],
-    }),
-    tailwindcss(),
-    tanstackStart(),
-    viteReact(),
-  ],
-  build: {
-    chunkSizeWarningLimit: 900,
+  {
+    root: import.meta.dirname,
+    // One copy of the theme: the theme and config contexts live in
+    // @hanzogui/core, a layer below what `hanzo()` dedupes.
+    dedupe: ['@hanzogui/core', '@hanzogui/web', '@hanzogui/portal', '@hanzogui/toast'],
+  },
+)
+
+/**
+ * Dependency optimization is a second resolution pass and inherits none of the
+ * first, so it is told the same extensions: a react-native package's `.web.js`
+ * sibling comes first. The dev runtime `hanzo()` injects is named up front: the
+ * scanner cannot see an import a transform adds, and finding it mid-session
+ * re-bundles and reloads every open page.
+ */
+export default {
+  ...config,
+  optimizeDeps: {
+    include: ['@hanzo/source/client', '@hanzo/source/jsx-dev-runtime', 'react/jsx-dev-runtime'],
     rollupOptions: {
-      onwarn: handleRollupWarning,
+      resolve: { extensions: (config.resolve as { extensions: string[] }).extensions },
     },
   },
-})
-
-export default config
+}
