@@ -51,11 +51,11 @@ export interface World {
 const reputation = { rating: 4.8, reviews: 23, installs: 1402, jobs: { completed: 57, disputed: 1 } }
 const none = { rating: null, reviews: 0, installs: 12, jobs: { completed: 0, disputed: 0 } }
 
-/** A wallet of the acting org, with a real key behind it. */
-export function wallet(w: World, id = 'wal_acme', name = 'Treasury'): Row {
+/** A wallet of the acting org, with a real key behind it, for the Hanzo L1 unless it names another chain. */
+export function wallet(w: World, id = 'wal_acme', name = 'Treasury', chain = 'eip155:36963'): Row {
   const key = privateKeyToAccount(generatePrivateKey())
   w.keys[id] = key
-  const made = { id, accountId: 'acct_1', name, custody: 'mpc', chain: 'lux', address: key.address }
+  const made = { id, accountId: 'acct_1', name, custody: 'mpc', chain, address: key.address }
   w.wallets.push(made)
   return made
 }
@@ -514,7 +514,7 @@ async function api(route: Route, w: World) {
   // ── wallets ──
   if (method === 'GET' && path === '/v1/wallet') return json(route, 200, { wallets: w.wallets })
   if (method === 'POST' && path === '/v1/wallet/accounts') return json(route, 201, { id: 'acct_1', name: body.name })
-  if (method === 'POST' && path === '/v1/wallet') return json(route, 201, wallet(w, 'wal_acme', String(body.name)))
+  if (method === 'POST' && path === '/v1/wallet') return json(route, 201, wallet(w, 'wal_acme', String(body.name), typeof body.chain === 'string' ? body.chain : ''))
   const signing = path.match(/^\/v1\/wallet\/([^/]+)\/sign$/)
   if (method === 'POST' && signing) {
     const key = w.keys[decodeURIComponent(signing[1])]

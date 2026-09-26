@@ -80,25 +80,40 @@ export function terms(problem: Record<string, unknown> | undefined): Required | 
   }
 }
 
+/** The Hanzo L1: the one network cloud's rail settles on (apps/x402 DefaultNetwork). */
+export const HANZO = 'eip155:36963'
+
 /**
- * The EIP-3009 assets this page signs for, by EIP-712 domain, and the atomic-unit
- * scale of each. USDC ("USD Coin", version "2", 6 places) is what cloud's rail
- * settles in (apps/x402 DefaultAssetName, DefaultAssetVersion, DefaultAssetDecimals).
- * Terms in any other asset are not signed: their value cannot be checked against
- * the dollars the buyer cleared.
+ * The EIP-3009 assets this page signs for on the Hanzo L1, by EIP-712 domain, and
+ * the atomic-unit scale of each. Cloud's rail settles USDC ("USD Coin", version
+ * "2", 6 places) there (apps/x402 DefaultAssetName, DefaultAssetVersion,
+ * DefaultAssetDecimals). Terms in any other asset, or on any other chain, are not
+ * signed: one key signs for every EVM chain, so an authorization for another
+ * chain's USDC would move that chain's money, outside the rail and its hold.
  */
 const PLACES = new Map([['USD Coin/2', 6]])
 
-/** The atomic-unit scale of the asset a requirement names, or null for an asset this page does not know. */
-export const places = (a: Requirements): number | null => PLACES.get(`${a.extra?.name ?? ''}/${a.extra?.version ?? ''}`) ?? null
+/** The atomic-unit scale of the asset a requirement names, or null for one this page does not sign for. */
+export const places = (a: Requirements): number | null =>
+  a.network === HANZO ? (PLACES.get(`${a.extra?.name ?? ''}/${a.extra?.version ?? ''}`) ?? null) : null
 
-/** The one requirement this page signs: exact, EIP-3009, on an EVM chain, in an asset it knows. */
+/**
+ * Whether a wallet pays on the Hanzo L1: its chain, as cloud stores it, names that
+ * chain ("eip155:36963" or "36963"), or none — a chain-agnostic wallet, which cloud
+ * runs on the Hanzo L1 (apps/wallet: "the Hanzo L1 (36963) when it is chain-agnostic").
+ */
+export const onHanzo = (chain?: string): boolean => /^(?:(?:eip155:)?36963)?$/.test((chain ?? '').trim())
+
+/** Refuse a paying wallet for any chain but the Hanzo L1, before anything is asked or signed. */
+export function rail(payer: { id?: string; chain?: string }): void {
+  if (onHanzo(payer.chain)) return
+  const who = payer.id ? `Wallet ${payer.id}` : 'The wallet'
+  throw new Error(`${who} is for ${payer.chain}, and this storefront pays only on the Hanzo L1 (${HANZO}). Nothing was signed.`)
+}
+
+/** The one requirement this page signs: exact, EIP-3009, on the Hanzo L1, in an asset it knows. */
 export function payable(r: Required): Requirements | null {
-  return (
-    r.accepts.find(
-      (a) => a.scheme === 'exact' && /^eip155:\d+$/.test(a.network) && (a.extra?.assetTransferMethod ?? 'eip3009') === 'eip3009' && places(a) !== null,
-    ) ?? null
-  )
+  return r.accepts.find((a) => a.scheme === 'exact' && (a.extra?.assetTransferMethod ?? 'eip3009') === 'eip3009' && places(a) !== null) ?? null
 }
 
 /** What a job's payment signs, once `vet` checked it. */
@@ -112,10 +127,10 @@ const ZERO = /^0x0{40}$/i
 
 /**
  * The terms a 402 names for a job, checked before anything is signed: they are for
- * a job, in an asset this page knows the scale of, for exactly the dollars the
- * buyer cleared, and to a payee that is an address other than the payer's own. The
- * platform cannot ask the wallet for anything else: other terms are refused, and
- * nothing is signed.
+ * a job, on the Hanzo L1 in an asset this page knows the scale of, for exactly the
+ * dollars the buyer cleared, and to a payee that is an address other than the
+ * payer's own. The platform cannot ask the wallet for anything else: other terms
+ * are refused, and nothing is signed.
  */
 export function vet(r: Required, amount: string, payer: string): Vetted {
   const job = /^job:([A-Za-z0-9_-]+)$/.exec(r.resource.url)?.[1]

@@ -129,7 +129,7 @@ describe('market contract', () => {
     const deadline = Math.floor(Date.now() / 1000) + 7 * 86_400
     const req = { listing: 'lst_1', brief: 'A market map.', amount: '250.00', category: 'service' as const, performed: 'US', deadline, wallet: 'wal_acme' }
     const payer = { id: 'wal_acme', address: '0x2c7536E3605D9C16a7a3D7b1898e529396a65c23' }
-    const attempt = (): m.Attempt => ({ req, from: payer })
+    const attempt = (id = 'att_1'): m.Attempt => ({ id, req, from: payer })
 
     const answer = (steps: ((body: Record<string, unknown>) => Response)[]) =>
       vi.stubGlobal(
@@ -252,6 +252,8 @@ describe('market contract', () => {
       [{ payTo: 'anyone' }, 'job:job_1', /not a seller's address/],
       [{ asset: 'usdc' }, 'job:job_1', /no token contract/],
       [{ extra: { assetTransferMethod: 'eip3009', name: 'Tether USD', version: '1' } }, 'job:job_1', /no chain and asset/],
+      [{ network: 'eip155:1', asset: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' }, 'job:job_1', /no chain and asset/],
+      [{ network: 'eip155:8453' }, 'job:job_1', /no chain and asset/],
       [{}, 'tool:geocode', /for tool:geocode, not a job/],
     ])('refuses unsigned terms other than the job it cleared (%#)', async (over, resource, why) => {
       answer([quote(over, resource)])
@@ -261,6 +263,217 @@ describe('market contract', () => {
       expect(e.message).toMatch(/Nothing was signed\.$/)
       expect(paths().every((p) => !p.endsWith('/sign'))).toBe(true)
       expect(a.signed).toBeUndefined()
+    })
+
+    // Red market-19: the wallet's key signs for every EVM chain; only the Hanzo L1 is the rail's.
+    it.each([
+      ['eip155:1', true],
+      ['8453', true],
+      ['lux', true],
+      ['eip155:36963', false],
+      ['36963', false],
+      ['', false],
+    ])('pays from a wallet for chain %j only on the Hanzo L1', async (chain, refused) => {
+      answer([quote(), signs, () => ok({ id: 'job_1', status: 'open' }, 201)])
+      const a: m.Attempt = { ...attempt(), from: { ...payer, chain } }
+      const got = await m.hire(a).catch((x: unknown) => x as Error)
+      if (refused) {
+        expect((got as Error).message).toMatch(/pays only on the Hanzo L1 \(eip155:36963\)\. Nothing was signed\.$/)
+        // Refused before anything is asked: no quote is made for a wallet that cannot pay it.
+        expect(paths()).toEqual([])
+      } else expect(got).toMatchObject({ id: 'job_1' })
+    })
+
+    /** A keeper in memory, as another tab would see it: what is kept now, and every version put. */
+    const memory = (a: m.Attempt) => {
+      const k = {
+        kept: structuredClone(a) as m.Attempt | null,
+        seen: [] as m.Attempt[],
+        get: () => (k.kept ? structuredClone(k.kept) : null),
+        put: (x: m.Attempt) => {
+          if (k.kept?.id !== x.id) return false
+          k.seen.push(structuredClone(x))
+          k.kept = structuredClone(x)
+          return true
+        },
+      }
+      return k
+    }
+
+    // Red market-18: a reload, or a Start over, threw away a payment whose answer was lost.
+    it('keeps the attempt once its authorization is drawn and again once signed, before either is used', async () => {
+      answer([quote(), signs, () => problem(504, { detail: 'upstream request timeout' })])
+      const a = attempt()
+      const k = memory(a)
+      await m.hire(a, k).catch(() => undefined)
+      expect(k.seen.map((x) => [x.auth?.nonce, x.signed?.payment])).toEqual([
+        [a.auth!.nonce, undefined],
+        [a.auth!.nonce, (calls[2].body as { payment: string }).payment],
+      ])
+    })
+
+    // Two tabs sending one attempt: each step takes up what the other kept, so there
+    // is one authorization and one payment however the two interleave.
+    it('takes up an authorization and a payment another tab kept meanwhile', async () => {
+      const a = attempt()
+      const k = memory(a)
+      const theirs = { validAfter: '1', validBefore: String(deadline + m.TAIL + 3600), nonce: `0x${'ab'.repeat(32)}` }
+      answer([() => ((k.kept!.auth = theirs), quote()()), signs, () => ok({ id: 'job_1', status: 'open' }, 201)])
+      await m.hire(a, k)
+      const sent = JSON.parse(Buffer.from((calls[2].body as { payment: string }).payment, 'base64').toString())
+      expect(sent.payload.authorization.nonce).toBe(theirs.nonce)
+
+      calls = []
+      const b = attempt()
+      const kb = memory(b)
+      const paid = { job: 'job_1', payment: 'dGhlaXJz', amount: '250.00', payTo: accepted.payTo }
+      answer([quote(), (body) => ((kb.kept!.signed = paid), signs(body)), () => ok({ id: 'job_1', status: 'open' })])
+      await m.hire(b, kb)
+      expect((calls[2].body as { payment: string }).payment).toBe(paid.payment)
+      expect(b.signed).toEqual(paid)
+    })
+
+    it('stops, signing nothing more, once another tab answered, dropped or replaced the attempt', async () => {
+      for (const after of [null, attempt('att_other')]) {
+        calls = []
+        const a = attempt()
+        const k = memory(a)
+        answer([() => ((k.kept = after), quote()())])
+        await expect(m.hire(a, k)).rejects.toBeInstanceOf(m.Taken)
+        expect(paths()).toEqual(['POST /v1/marketplace/jobs'])
+      }
+      // Not kept to begin with: nothing is asked at all.
+      calls = []
+      const gone = attempt()
+      await expect(m.hire(gone, { get: () => null, put: () => false })).rejects.toThrow('Another tab answered or dropped this hire while it was being sent here. Nothing more was sent.')
+      expect(calls).toHaveLength(0)
+    })
+
+    // A /sign answer lost after the wallet signed: the retry signs the same
+    // authorization (same nonce), so at most one of the two signatures moves money —
+    // even when the quote has lapsed and the platform names another job.
+    it('signs the same authorization again when a signature was lost', async () => {
+      const a = attempt()
+      answer([quote(), () => problem(502, { detail: 'custody ring did not answer' })])
+      await expect(m.hire(a)).rejects.toMatchObject({ status: 502 })
+      const first = (calls[1].body as { digest: string }).digest
+      const drawn = a.auth
+      calls = []
+      answer([quote(), signs, () => ok({ id: 'job_1', status: 'open' }, 201)])
+      await expect(m.hire(a)).resolves.toMatchObject({ id: 'job_1' })
+      expect((calls[1].body as { digest: string }).digest).toBe(first)
+      expect(a.auth).toEqual(drawn)
+
+      const b: m.Attempt = { ...attempt(), auth: drawn }
+      calls = []
+      answer([quote({}, 'job:job_2'), signs, () => ok({ id: 'job_2', status: 'open' }, 201)])
+      await m.hire(b)
+      expect(b.auth).toEqual(drawn)
+      const sent = JSON.parse(Buffer.from((calls[2].body as { payment: string }).payment, 'base64').toString())
+      expect(sent).toMatchObject({ resource: { url: 'job:job_2' }, payload: { authorization: { nonce: drawn!.nonce } } })
+    })
+
+    it('keeps an attempt for this browser, per person, org and listing, until it is forgotten', () => {
+      const a: m.Attempt = { ...attempt(), signed: { job: 'job_1', payment: 'cGF5', amount: '250.00', payTo: accepted.payTo } }
+      expect(m.claim('acme', 'lst_1', a)).toEqual({ had: null, kept: true })
+      expect(m.saved('acme', 'lst_1')).toEqual(a)
+      // A new version of the kept attempt is kept; another attempt is not kept over it.
+      const drawn = { ...a, auth: { validAfter: '1', validBefore: String(deadline + m.TAIL), nonce: '0x01' } }
+      expect(m.save('acme', 'lst_1', drawn)).toBe(true)
+      expect(m.saved('acme', 'lst_1')).toEqual(drawn)
+      expect(m.save('acme', 'lst_1', attempt('att_other'))).toBe(false)
+      expect(m.save('acme', 'lst_1', a)).toBe(true)
+      expect(m.keep('acme', 'lst_1').get()).toEqual(a)
+      expect(m.saved('globex', 'lst_1')).toBeNull()
+      expect(m.saved('acme', 'lst_2')).toBeNull()
+      m.forget('acme', 'lst_1', a)
+      expect(m.saved('acme', 'lst_1')).toBeNull()
+      expect(m.save('acme', 'lst_1', a)).toBe(false)
+      // Anything else under the key is not an attempt.
+      m.claim('acme', 'lst_1', a)
+      const key = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).find((k) => k?.startsWith('hanzo:hire:'))!
+      expect(key).toBe('hanzo:hire::acme:lst_1')
+      for (const junk of [
+        '{',
+        '{}',
+        'null',
+        JSON.stringify({ ...a, id: 7 }),
+        JSON.stringify({ ...a, req: { ...a.req, deadline: '1' } }),
+        JSON.stringify({ ...a, req: { ...a.req, performed: 5 } }),
+        JSON.stringify({ ...a, req: { ...a.req, category: 7 } }),
+        JSON.stringify({ ...a, from: { ...a.from, chain: 1 } }),
+        JSON.stringify({ ...a, auth: { job: 'job_1' } }),
+        JSON.stringify({ ...a, signed: { job: 'job_1' } }),
+        JSON.stringify({ ...a, req: { ...a.req, listing: 'lst_2' } }),
+      ]) {
+        localStorage.setItem(key, junk)
+        expect(m.saved('acme', 'lst_1')).toBeNull()
+      }
+    })
+
+    // Red market-18: a tab whose screen predates another tab's lost hire started a
+    // second one, and a tab's answer erased an attempt another tab kept.
+    it('starts a new attempt only when none is kept, and forgets only its own', () => {
+      const a = attempt('att_a')
+      const b = attempt('att_b')
+      expect(m.claim('acme', 'lst_1', a)).toEqual({ had: null, kept: true })
+      expect(m.claim('acme', 'lst_1', b)).toEqual({ had: a, kept: true })
+      expect(m.claim('acme', 'lst_1', a)).toEqual({ had: null, kept: true })
+      m.forget('acme', 'lst_1', b)
+      expect(m.saved('acme', 'lst_1')).toEqual(a)
+      m.forget('acme', 'lst_1', a)
+      expect(m.saved('acme', 'lst_1')).toBeNull()
+      m.forget('acme', 'lst_1', a)
+      expect(m.claim('acme', 'lst_1', b)).toEqual({ had: null, kept: true })
+      expect(m.hires('hanzo:hire::acme:lst_1')).toBe(true)
+      expect(m.hires(null)).toBe(true)
+      expect(m.hires('hanzo_iam_current_org')).toBe(false)
+    })
+
+    // Review round 5: a tab's stale copy was kept over another tab's payment, and a
+    // refusal in one tab forgot a payment another tab had signed.
+    it('never keeps less than is kept, and never forgets another tab\'s payment', () => {
+      const bare = attempt()
+      const drawn = { validAfter: '1', validBefore: String(deadline + m.TAIL), nonce: '0x0b' }
+      const paid = { job: 'job_1', payment: 'cGF5', amount: '250.00', payTo: accepted.payTo }
+      m.claim('acme', 'lst_1', { ...bare, auth: drawn, signed: paid })
+      const stale = attempt()
+      expect(m.save('acme', 'lst_1', stale)).toBe(true)
+      expect(stale).toMatchObject({ auth: drawn, signed: paid })
+      expect(m.saved('acme', 'lst_1')).toMatchObject({ auth: drawn, signed: paid })
+
+      // Answered for a copy that never drew or signed: another tab's payment stays.
+      expect(m.forget('acme', 'lst_1', attempt())).toBe(false)
+      expect(m.forget('acme', 'lst_1', { ...attempt(), auth: drawn })).toBe(false)
+      expect(m.saved('acme', 'lst_1')).toMatchObject({ signed: paid })
+      // Answered for exactly what is kept, or the job opened: it is over.
+      expect(m.forget('acme', 'lst_1', attempt(), true)).toBe(true)
+      expect(m.saved('acme', 'lst_1')).toBeNull()
+      m.claim('acme', 'lst_1', { ...bare, auth: drawn, signed: paid })
+      expect(m.forget('acme', 'lst_1', { ...bare, auth: drawn, signed: paid })).toBe(true)
+      expect(m.saved('acme', 'lst_1')).toBeNull()
+    })
+
+    it('forgets an attempt whose authorization has lapsed: it can fund nothing', () => {
+      const a: m.Attempt = { ...attempt(), auth: { validAfter: '1', validBefore: '2000', nonce: '0x01' } }
+      m.claim('acme', 'lst_1', a)
+      expect(m.saved('acme', 'lst_1', 1999)).toEqual(a)
+      expect(m.saved('acme', 'lst_1', 2000)).toBeNull()
+      expect(m.saved('acme', 'lst_1', 1)).toBeNull()
+    })
+
+    it('keeps nothing when the browser refuses storage', () => {
+      const denied = vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+        throw new DOMException('denied', 'SecurityError')
+      })
+      try {
+        expect(m.save('acme', 'lst_1', attempt())).toBe(false)
+        expect(m.saved('acme', 'lst_1')).toBeNull()
+        expect(m.claim('acme', 'lst_1', attempt())).toEqual({ had: null, kept: false })
+        expect(() => m.forget('acme', 'lst_1', attempt())).not.toThrow()
+      } finally {
+        denied.mockRestore()
+      }
     })
 
     it('finds a job already under way for exactly these terms', async () => {

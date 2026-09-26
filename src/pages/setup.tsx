@@ -29,6 +29,7 @@ import {
   type Wallet,
 } from '~/lib/market'
 import { useRead, useRun, type Read } from '~/lib/read'
+import { HANZO, onHanzo } from '~/lib/x402'
 import { Gate } from '~/gate'
 import { useSession } from '~/session'
 import { Act, Choice, Failed, Field, Fields, Go, Mark, Nothing, Page, Panel, Pending, Refusal, Section, Stages, Tick } from '~/ui'
@@ -443,6 +444,8 @@ function Payout({ org, wallets: read, standing }: { org: string; wallets: Read<{
   if (!read.it) return <Nothing says="Loading…" />
   const list = read.it.wallets
   const payout = standing.it?.payout ?? null
+  // A hire is paid on the Hanzo L1, so an org with no wallet there is offered one.
+  const hanzo = list.some((w) => onHanzo(w.chain))
 
   return (
     <Panel>
@@ -451,28 +454,27 @@ function Payout({ org, wallets: read, standing }: { org: string; wallets: Read<{
       ) : standing.failed ? (
         <Failed what="load where your organization stands as a seller" why={standing.failed} />
       ) : null}
-      {list.length ? (
-        list.map((w) => (
-          <XStack key={w.id} items="center" gap="$3" flexWrap="wrap" py="$1" data-wallet="">
-            <Text fontSize="$3" color="$ink" flex={1}>
-              {w.name} · {w.chain}
-            </Text>
-            <Text fontSize="$1" color="$quiet" fontFamily="$mono" numberOfLines={1}>
-              {w.address}
-            </Text>
-            {payout?.bound && payout.wallet === w.id ? (
-              <Mark tone="up" says="Payouts go here" />
-            ) : payout ? (
-              <Act disabled={busy} onPress={() => void run(async () => (await bindPayout(org, w), standing.again()))} label={`Use ${w.name} for payouts`}>
-                Use for payouts
-              </Act>
-            ) : null}
-          </XStack>
-        ))
-      ) : (
+      {list.map((w) => (
+        <XStack key={w.id} items="center" gap="$3" flexWrap="wrap" py="$1" data-wallet="">
+          <Text fontSize="$3" color="$ink" flex={1}>
+            {w.name} · {w.chain || 'any chain'}
+          </Text>
+          <Text fontSize="$1" color="$quiet" fontFamily="$mono" numberOfLines={1}>
+            {w.address}
+          </Text>
+          {payout?.bound && payout.wallet === w.id ? (
+            <Mark tone="up" says="Payouts go here" />
+          ) : payout ? (
+            <Act disabled={busy} onPress={() => void run(async () => (await bindPayout(org, w), standing.again()))} label={`Use ${w.name} for payouts`}>
+              Use for payouts
+            </Act>
+          ) : null}
+        </XStack>
+      ))}
+      {hanzo ? null : (
         <>
           <Text fontSize="$2" color="$soft">
-            Your organization has no wallet yet.
+            {list.length ? 'None of your organization’s wallets is on the Hanzo L1, where hires are paid.' : 'Your organization has no wallet yet.'}
           </Text>
           <XStack>
             <Act
@@ -481,7 +483,7 @@ function Payout({ org, wallets: read, standing }: { org: string; wallets: Read<{
               onPress={() =>
                 void run(async () => {
                   const account = await createAccount('Payouts')
-                  await createWallet({ accountId: account.id, name: 'Payouts', custody: 'mpc' })
+                  await createWallet({ accountId: account.id, name: 'Payouts', custody: 'mpc', chain: HANZO })
                   read.again()
                 })
               }

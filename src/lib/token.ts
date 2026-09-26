@@ -21,7 +21,8 @@ const CHOSEN = new Set([CURRENT, `${PREFIX}current_project`])
 
 const kept = (key: string): boolean => key === WHO || (key.startsWith(PREFIX) && !CHOSEN.has(key))
 
-function store(): Storage | null {
+/** This browser's storage, or null where it is refused. */
+export function store(): Storage | null {
   try {
     return typeof window === 'undefined' ? null : window.localStorage
   } catch {

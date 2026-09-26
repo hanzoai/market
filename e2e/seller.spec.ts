@@ -63,7 +63,8 @@ test('seller onboarding → payout wallet → create listing → deliver a job �
 
   // A payout wallet: created, then proved by its own signature over cloud's challenge.
   await page.getByRole('button', { name: 'Create a payout wallet' }).click()
-  await expect(page.locator('[data-wallet]')).toContainText('Payouts · lux')
+  await expect(page.locator('[data-wallet]')).toContainText('Payouts · eip155:36963')
+  await expect(page.getByRole('button', { name: 'Create a payout wallet' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Use Payouts for payouts' }).click()
   await expect(page.getByText('Payouts go here')).toBeVisible()
   await expect(page.getByText('Payout wallet: proved')).toBeVisible()
@@ -288,4 +289,19 @@ test('a sum over the newest 1000 receipts reads as a floor', async ({ page }) =>
   await expect(page.getByText('at least $40.00', { exact: true })).toBeVisible()
   await expect(page.locator('[data-cut]')).toHaveText('The newest 1,000 payments. The platform lists no more than that, so the figures above from them are floors.')
   await expect(page.getByText('$120.005', { exact: true })).toBeVisible()
+})
+
+// A hire is paid on the Hanzo L1: an org whose wallets are all on another chain is
+// offered one there, or checkout would send it to a page with no way forward.
+test('an org with no wallet on the Hanzo L1 is offered one', async ({ page }) => {
+  const w = world()
+  wallet(w, 'wal_lux', 'Old', 'lux')
+  await mock(page, w)
+  await page.goto('/sell')
+  await signIn(page, '/sell')
+  await expect(page.locator('[data-wallet]')).toContainText('Old · lux')
+  await expect(page.getByText('None of your organization’s wallets is on the Hanzo L1, where hires are paid.')).toBeVisible()
+  await page.getByRole('button', { name: 'Create a payout wallet' }).click()
+  await expect(page.locator('[data-wallet]').filter({ hasText: 'Payouts · eip155:36963' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create a payout wallet' })).toHaveCount(0)
 })

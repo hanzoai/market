@@ -1,6 +1,6 @@
 import { recoverAddress } from 'viem'
 
-import { chainId, digest, nonce, payable, payment, places, terms, type Required } from '~/lib/x402'
+import { chainId, digest, nonce, onHanzo, payable, payment, places, rail, terms, type Required } from '~/lib/x402'
 
 // A payment signed by cloud's own client half, apps/x402.Sign at hanzo-inc/cloud
 // 725e61052, for these exact inputs, and accepted by its Verify. The digest this
@@ -47,9 +47,13 @@ describe('x402', () => {
     expect(terms({ paymentRequired: b64({ x402Version: 2, accepts: [] }) })).toBeNull()
   })
 
-  it('signs only exact EIP-3009 on an EVM chain', () => {
+  it('signs only exact EIP-3009 on the Hanzo L1', () => {
     const r: Required = { x402Version: 2, resource: { url: 'job:job_1' }, accepts: [{ ...CLOUD.accepted, network: 'solana:mainnet' }, CLOUD.accepted] }
     expect(payable(r)).toBe(CLOUD.accepted)
+    // Red market-19: the same USDC domain on Ethereum is another chain's money.
+    const mainnet = { ...CLOUD.accepted, network: 'eip155:1', asset: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' }
+    expect(payable({ ...r, accepts: [mainnet] })).toBeNull()
+    expect(places(mainnet)).toBeNull()
     expect(payable({ ...r, accepts: [{ ...CLOUD.accepted, extra: { assetTransferMethod: 'permit2', name: 'USD Coin', version: '2' } }] })).toBeNull()
     expect(payable({ ...r, accepts: [{ ...CLOUD.accepted, scheme: 'upto' }] })).toBeNull()
   })
@@ -61,6 +65,14 @@ describe('x402', () => {
     expect(places(other)).toBeNull()
     expect(payable({ ...r, accepts: [other] })).toBeNull()
     expect(places({ ...CLOUD.accepted, extra: undefined })).toBeNull()
+  })
+
+  it('pays only from a wallet on the Hanzo L1, as cloud stores its chain', () => {
+    for (const chain of [undefined, '', '  ', 'eip155:36963', '36963']) expect(onHanzo(chain)).toBe(true)
+    for (const chain of ['eip155:1', '1', '8453', 'eip155:369630', 'lux', 'solana:mainnet']) expect(onHanzo(chain)).toBe(false)
+    expect(() => rail({ id: 'wal_acme', chain: '36963' })).not.toThrow()
+    expect(() => rail({ id: 'wal_eth', chain: 'eip155:1' })).toThrow('Wallet wal_eth is for eip155:1, and this storefront pays only on the Hanzo L1 (eip155:36963). Nothing was signed.')
+    expect(() => rail({ chain: 'lux' })).toThrow(/^The wallet is for lux/)
   })
 
   it('names the chain and draws a fresh nonce', () => {
