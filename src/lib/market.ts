@@ -1,5 +1,5 @@
 // Every api.hanzo.ai operation this storefront calls, named once, with the shapes
-// cloud answers (hanzo-inc/cloud 725e61052: apps/marketplace, apps/principals,
+// cloud answers (hanzo-inc/cloud 039a518e9: apps/marketplace, apps/principals,
 // apps/x402, apps/wallet, apps/tax). Money is an exact decimal string (USD);
 // times are unix seconds.
 //
@@ -9,9 +9,8 @@
 import { hashMessage } from 'viem'
 
 import { blob, Refusal, request, text } from '~/lib/http'
-import { held } from '~/lib/job'
+import { held, inflight } from '~/lib/job'
 import { dollars } from '~/lib/money'
-import { store, subject } from '~/lib/token'
 import { digest, nonce, payment, rail, terms, vet, type Authorization } from '~/lib/x402'
 
 /** What a listing sells. A tool is the platform's, sold per call; everything else is hired for a job. */
@@ -130,7 +129,7 @@ export const uninstall = (tool: string) =>
 
 // ── jobs: one org hires another, paid once over x402 at release ─────────────
 
-export type JobStatus = 'quoted' | 'open' | 'accepted' | 'delivered' | 'released' | 'disputed' | 'declined' | 'cancelled' | 'refunded'
+export type JobStatus = 'quoted' | 'funding' | 'open' | 'accepted' | 'delivered' | 'released' | 'disputed' | 'declined' | 'cancelled' | 'refunded'
 
 /** What a payment is for, as the economic event says it. */
 export type Category = 'service' | 'goods' | 'transfer' | 'royalty'
@@ -140,6 +139,8 @@ export interface Job {
   /** Empty for a direct offer. */
   listing: string
   title: string
+  /** The buyer's key for the hire that made the job, when it sent one; only its buyer sees it. */
+  attempt?: string
   buyerOrg: string
   sellerOrg: string
   amount: string
@@ -192,236 +193,98 @@ export interface Payer {
 export const TAIL = (3 + 14 + 1) * 86_400
 
 /**
- * One hire, from its first ask to the job it opens. It keeps what it sent, so
- * asking again after an answer that never came back is the same request: the same
- * terms and deadline, which cloud answers with the quote it already made (within
- * the hour), and once signed the same payment, which cloud answers with the job it
- * opened (jobs.go fund: "send the same payment again"). Only a new attempt quotes,
- * signs and opens anew.
- *
- * The authorization is drawn once per attempt, before the wallet is asked to sign
- * it: a signature whose answer was lost is asked for again over the same nonce,
- * even for a quote that names another job, so however many signatures one attempt
- * leaves, EIP-3009 lets at most one of them move money.
+ * One hire, from its first ask to the job it opens, named by an attempt drawn
+ * when it starts (cloud jobs.go: one attempt, one job). Every request it makes
+ * carries the attempt and the same terms, so cloud answers it with the same job
+ * however often it arrives: the quote's terms while the job is quoted or funding,
+ * the job once it opened. A hire whose answer never came back is sent again as it
+ * was, and this page keeps it for that alone, in memory: the platform lists the
+ * buyer's quoted and funding jobs, so a reload, another tab or another device
+ * finds a hire in flight there.
  */
 export interface Attempt {
-  /** Which attempt this is, drawn when it starts. */
+  /** The attempt's key, drawn when it starts. */
   id: string
   req: HireReq
   from: Payer
-  /** The authorization's validity and nonce, drawn once, before anything is signed. */
-  auth?: { validAfter: string; validBefore: string; nonce: string }
+  /**
+   * The authorization for the job the attempt was quoted, drawn before the wallet is
+   * asked to sign it: a signature whose answer was lost is asked for again over the
+   * same nonce, and a job quoted anew gets an authorization of its own.
+   */
+  auth?: { job: string; validAfter: string; validBefore: string; nonce: string }
   /** The payment the wallet signed for the quoted job, and what it pays. */
   signed?: { job: string; payment: string; amount: string; payTo: string }
 }
 
 /**
- * POST /v1/marketplace/jobs, both steps. Sent without a payment, cloud clears the
- * terms and answers 402 with the x402 terms to sign for the job; this page checks
- * them against the job the buyer cleared (x402 `vet`), the buyer's wallet signs
- * them on the platform, and the same request goes again with the signed payment,
- * which opens the job (201) with the amount set aside in that wallet. The
- * authorization stays valid through the deadline, the review window, a ruling on
- * a dispute and a day for the clock, as cloud requires.
- *
- * The authorization, then the signed payment, are kept on `a`, and handed to the
- * keeper, before each is used, so a retry of an attempt whose answer was lost —
- * even from a page loaded since, or another tab — signs the same authorization,
- * or re-sends the same payment, rather than another. Before each step the attempt
- * is read back from the keeper, taking up what another tab did with it meanwhile;
- * one no longer kept was answered or dropped there, and nothing more is sent.
+ * The payment can never fund its job: the rail gave it up, spent its nonce or
+ * holds the nonce for another payment (402 nonce_replayed: "sign another"), or
+ * the quote it answered lapsed and is gone (404).
  */
-export async function hire(a: Attempt, keeper?: Keeper): Promise<Job> {
+export const spent = (e: unknown): boolean =>
+  e instanceof Refusal && (e.status === 404 || (e.status === 402 && (e.code === 'nonce_replayed' || /\(nonce_replayed\)\s*$/.test(e.message))))
+
+/**
+ * POST /v1/marketplace/jobs, both steps, under the attempt. Sent without a
+ * payment, cloud clears the terms and answers 402 with the x402 terms to sign for
+ * the job; this page checks them against the job the buyer cleared (x402 `vet`),
+ * the buyer's wallet signs them on the platform, and the same request goes again
+ * with the signed payment, which opens the job (201) with the amount set aside in
+ * that wallet. The authorization stays valid through the deadline, the review
+ * window, a ruling on a dispute and a day for the clock, as cloud requires.
+ *
+ * The authorization, then the payment, are kept on `a` before each is used, so
+ * sending `a` again after an answer that never came back signs the same
+ * authorization, or sends the same payment. A payment that can never fund its job
+ * (`spent`) is dropped, and the attempt asks once more — the same job, or the one
+ * cloud quoted anew — and signs a fresh authorization for it.
+ */
+export async function hire(a: Attempt): Promise<Job> {
   const { req, from } = a
   rail(from)
-  const sync = () => {
-    if (!keeper) return
-    const now = keeper.get()
-    if (now?.id !== a.id) throw new Taken()
-    a.auth ??= now.auth
-    a.signed ??= now.signed
-  }
-  const put = () => {
-    if (keeper && !keeper.put(a)) throw new Taken()
-  }
-  sync()
-  const body = { listing: req.listing, brief: req.brief, amount: req.amount, category: req.category, performed: req.performed, deadline: req.deadline, wallet: req.wallet }
-  if (!a.signed) {
-    let required
-    try {
-      return await request<Job>({ method: 'POST', path: '/v1/marketplace/jobs', body })
-    } catch (e) {
-      if (!(e instanceof Refusal) || e.status !== 402) throw e
-      required = terms(e.problem)
-      if (!required) throw e
-    }
-    const { job, accepted } = vet(required, req.amount, from.address)
-    sync()
-    if (!a.auth) {
-      a.auth = { validAfter: String(Math.floor(Date.now() / 1000) - 600), validBefore: String(req.deadline + TAIL + 3600), nonce: nonce() }
-      put()
-    }
+  const body = { listing: req.listing, brief: req.brief, amount: req.amount, category: req.category, performed: req.performed, deadline: req.deadline, wallet: req.wallet, attempt: a.id }
+  for (let again = false; ; again = true) {
     if (!a.signed) {
+      let required
+      try {
+        return await request<Job>({ method: 'POST', path: '/v1/marketplace/jobs', body })
+      } catch (e) {
+        if (!(e instanceof Refusal) || e.status !== 402) throw e
+        required = terms(e.problem)
+        if (!required) throw e
+      }
+      const { job, accepted } = vet(required, req.amount, from.address)
+      if (a.auth?.job !== job) {
+        a.auth = { job, validAfter: String(Math.floor(Date.now() / 1000) - 600), validBefore: String(req.deadline + TAIL + 3600), nonce: nonce() }
+      }
       const { validAfter, validBefore, nonce: once } = a.auth
       const auth: Authorization = { from: from.address, to: accepted.payTo, value: accepted.amount, validAfter, validBefore, nonce: once }
       const signed = await sign(from.id, digest(accepted, auth))
       if (signed.address.toLowerCase() !== from.address.toLowerCase()) throw new Error(`Wallet ${from.id} signed as ${signed.address}, not ${from.address}.`)
-      // Another tab may have signed the same authorization meanwhile: its payment is the one kept and sent.
-      sync()
-      if (!a.signed) {
-        a.signed = { job, payment: payment(required, accepted, auth, signed.signature), amount: req.amount, payTo: accepted.payTo }
-        put()
-      }
+      a.signed = { job, payment: payment(required, accepted, auth, signed.signature), amount: req.amount, payTo: accepted.payTo }
     }
-  }
-  return request<Job>({ method: 'POST', path: '/v1/marketplace/jobs', body: { ...body, payment: a.signed.payment } })
-}
-
-/** Where an attempt is kept while it is sent, shared with every tab. */
-export interface Keeper {
-  /** The attempt kept now, by this tab or another, or null. */
-  get(): Attempt | null
-  /** Keep this version of the attempt; false when another is kept in its place. */
-  put(a: Attempt): boolean
-}
-
-/** The attempt was answered, dropped or replaced in another tab while this one sent it. */
-export class Taken extends Error {
-  constructor() {
-    super('Another tab answered or dropped this hire while it was being sent here. Nothing more was sent.')
-    this.name = 'Taken'
+    try {
+      return await request<Job>({ method: 'POST', path: '/v1/marketplace/jobs', body: { ...body, payment: a.signed.payment } })
+    } catch (e) {
+      if (again || !spent(e)) throw e
+      a.auth = a.signed = undefined
+    }
   }
 }
 
 /**
- * A job the buyer's org already has under way for exactly these terms — this
- * listing, brief and amount, its money still set aside — or null. Asked before a
- * new quote: an earlier attempt whose answer never came back may have opened it.
+ * A job the buyer's org already has for exactly these terms — this listing, brief
+ * and amount — still under way: quoted or funding (a hire in flight, which may yet
+ * open it), or with its money set aside. Asked before a new attempt: one whose
+ * answer never came back, here or elsewhere, may be it. A quote made by one of
+ * `unpaid` — attempts this page ended without a payment — can never open, and is
+ * not in the way.
  */
-export async function underway(req: Pick<HireReq, 'listing' | 'brief' | 'amount'>): Promise<Job | null> {
+export async function underway(req: Pick<HireReq, 'listing' | 'brief' | 'amount'>, unpaid: ReadonlySet<string> = new Set()): Promise<Job | null> {
   const { jobs: mine } = await jobs('buyer')
-  return mine.find((j) => j.listing === req.listing && j.brief === req.brief && dollars(j.amount) === req.amount && held(j)) ?? null
-}
-
-/**
- * Where this browser keeps a hire until the platform answers it: one per person,
- * org and listing, shared by every tab. It is under the session's `hanzo` prefix,
- * so a sign-out or another person's sign-in clears it with the rest (token `own`).
- */
-const place = (org: string, listing: string) => `hanzo:hire:${subject() ?? ''}:${org}:${listing}`
-
-const str = (v: unknown): v is string => typeof v === 'string'
-
-const maybe = (v: unknown) => v === undefined || str(v)
-
-/** The attempt stored as JSON, or null for anything that is not one. */
-function attempt(v: unknown): Attempt | null {
-  const a = v as Partial<Attempt> | null
-  const r = a?.req
-  const t = a?.auth
-  const s = a?.signed
-  const ok =
-    str(a?.id) &&
-    r &&
-    str(r.listing) &&
-    str(r.brief) &&
-    str(r.amount) &&
-    str(r.wallet) &&
-    maybe(r.category) &&
-    maybe(r.performed) &&
-    Number.isSafeInteger(r.deadline) &&
-    a.from &&
-    str(a.from.id) &&
-    str(a.from.address) &&
-    maybe(a.from.chain) &&
-    (t === undefined || (str(t.validAfter) && str(t.validBefore) && str(t.nonce))) &&
-    (s === undefined || (str(s.job) && str(s.payment) && str(s.amount) && str(s.payTo)))
-  return ok ? (a as Attempt) : null
-}
-
-/** Whether a storage change can be to a kept hire (null: storage was cleared). */
-export const hires = (key: string | null): boolean => key === null || key.startsWith('hanzo:hire:')
-
-/**
- * Keep a new version of an attempt that is kept — never over another tab's, and
- * never losing what another tab added to it: an authorization or a payment already
- * kept stays, and is taken into `a`. A reload, another tab, or a page left and come
- * back to then finds the payment it signed and sends that again, instead of signing
- * a second one that could open a second job while the first may still be funding.
- * False when it was not kept.
- */
-export function save(org: string, listing: string, a: Attempt): boolean {
-  const had = saved(org, listing)
-  if (had?.id !== a.id) return false
-  a.auth = had.auth ?? a.auth
-  a.signed = had.signed ?? a.signed
-  return write(org, listing, a)
-}
-
-/** Whether the kept copy carries an authorization or a payment that `a` does not. */
-const beyond = (had: Attempt, a: Attempt): boolean =>
-  (had.auth !== undefined && had.auth.nonce !== a.auth?.nonce) || (had.signed !== undefined && had.signed.payment !== a.signed?.payment)
-
-function write(org: string, listing: string, a: Attempt): boolean {
-  try {
-    const s = store()
-    s?.setItem(place(org, listing), JSON.stringify(a))
-    return s !== null
-  } catch {
-    return false
-  }
-}
-
-/**
- * Start keeping a new attempt — unless another is already kept for this listing,
- * by this tab or any other, which is returned instead: it is the one to answer.
- * Asked at the last moment before the first request, so a tab whose screen is
- * older than another tab's lost hire never starts a second one. `kept` says
- * whether this browser keeps anything at all (storage can be refused).
- */
-export function claim(org: string, listing: string, a: Attempt): { had: Attempt | null; kept: boolean } {
-  const had = saved(org, listing)
-  if (had && had.id !== a.id) return { had, kept: true }
-  return { had: null, kept: write(org, listing, a) }
-}
-
-/** The keeper of one org's attempt at one listing, in this browser's storage. */
-export const keep = (org: string, listing: string): Keeper => ({ get: () => saved(org, listing), put: (a) => save(org, listing, a) })
-
-/**
- * Forget an attempt the platform answered — only that one, never another tab's,
- * and, unless it `opened` its job, never while the kept copy carries an
- * authorization or a payment another tab drew with it that this answer was not
- * to: that payment may still open a job. False when something else is kept.
- */
-export function forget(org: string, listing: string, a: Attempt, opened = false): boolean {
-  const had = saved(org, listing)
-  if (had && (had.id !== a.id || (!opened && beyond(had, a)))) return false
-  try {
-    store()?.removeItem(place(org, listing))
-  } catch {
-    /* nothing was kept */
-  }
-  return true
-}
-
-/**
- * The attempt kept for this org and listing, or null. One whose authorization has
- * lapsed can fund nothing any more, so it is forgotten.
- */
-export function saved(org: string, listing: string, now = Math.floor(Date.now() / 1000)): Attempt | null {
-  try {
-    const raw = store()?.getItem(place(org, listing))
-    const a = raw ? attempt(JSON.parse(raw)) : null
-    if (!a || a.req.listing !== listing) return null
-    if (a.auth && Number(a.auth.validBefore) <= now) {
-      store()?.removeItem(place(org, listing))
-      return null
-    }
-    return a
-  } catch {
-    return null
-  }
+  const open = (j: Job) => held(j) || (inflight(j) && !(j.status === 'quoted' && unpaid.has(j.attempt ?? '')))
+  return mine.find((j) => j.listing === req.listing && j.brief === req.brief && dollars(j.amount) === req.amount && open(j)) ?? null
 }
 
 export const jobs = (role: 'buyer' | 'seller') =>

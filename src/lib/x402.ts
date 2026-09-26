@@ -6,7 +6,7 @@
 // (POST /v1/wallet/{id}/sign): no key is ever in this page, and the page is the
 // buyer's own check that the terms it signs are the job it cleared (`vet`).
 
-import { hashTypedData, isAddress, type Hex } from 'viem'
+import { hashTypedData, isAddress, zeroAddress, type Hex } from 'viem'
 
 import { atomic, scaled, usd } from '~/lib/money'
 
@@ -83,19 +83,43 @@ export function terms(problem: Record<string, unknown> | undefined): Required | 
 /** The Hanzo L1: the one network cloud's rail settles on (apps/x402 DefaultNetwork). */
 export const HANZO = 'eip155:36963'
 
-/**
- * The EIP-3009 assets this page signs for on the Hanzo L1, by EIP-712 domain, and
- * the atomic-unit scale of each. Cloud's rail settles USDC ("USD Coin", version
- * "2", 6 places) there (apps/x402 DefaultAssetName, DefaultAssetVersion,
- * DefaultAssetDecimals). Terms in any other asset, or on any other chain, are not
- * signed: one key signs for every EVM chain, so an authorization for another
- * chain's USDC would move that chain's money, outside the rail and its hold.
- */
-const PLACES = new Map([['USD Coin/2', 6]])
+/** The EIP-712 domain of an EIP-3009 token, and the atomic-unit scale its amounts are in. */
+export interface Asset {
+  name: string
+  version: string
+  decimals: number
+}
 
-/** The atomic-unit scale of the asset a requirement names, or null for one this page does not sign for. */
-export const places = (a: Requirements): number | null =>
-  a.network === HANZO ? (PLACES.get(`${a.extra?.name ?? ''}/${a.extra?.version ?? ''}`) ?? null) : null
+/** No token contract: the zero address, as an EIP-712 domain encodes an unset one (cloud apps/x402 protocol.go addrBytes). */
+const NONE = zeroAddress
+
+/**
+ * What this page signs for, and nothing else: network → token contract → the
+ * token's EIP-712 domain and scale. The network is the Hanzo L1; the contract is
+ * the one cloud's operator pins for the rail (CLOUD_X402_ASSET). None is pinned —
+ * the Hanzo L1 has no USDC deployment — so cloud states no contract, and its
+ * domain names the zero address: an authorization no token contract can execute,
+ * which moves money only through the rail's own ledger. Terms on any other chain,
+ * or naming any other contract, are not signed: one key signs for every EVM
+ * chain, and an authorization for a token the wallet holds would move that
+ * token, outside the rail and its hold. A contract the operator pins later is
+ * added here, or this page refuses every hire until it is.
+ */
+export const ASSETS: ReadonlyMap<string, ReadonlyMap<string, Asset>> = new Map([[HANZO, new Map([[NONE, { name: 'USD Coin', version: '2', decimals: 6 }]])]])
+
+/** The token contract a requirement names, lowercase, with none as the zero address — or null for one that is not an address. */
+export function contract(a: Requirements): string | null {
+  const c = (a.asset ?? '').trim()
+  if (!c) return NONE
+  return isAddress(c, { strict: false }) ? c.toLowerCase() : null
+}
+
+/** The pinned asset a requirement names — its network, contract and EIP-712 domain all as pinned — or null. */
+export function asset(a: Requirements): Asset | null {
+  const c = contract(a)
+  const pinned = c === null ? undefined : ASSETS.get(a.network)?.get(c)
+  return pinned && a.extra?.name === pinned.name && a.extra.version === pinned.version ? pinned : null
+}
 
 /**
  * Whether a wallet pays on the Hanzo L1: its chain, as cloud stores it, names that
@@ -111,9 +135,9 @@ export function rail(payer: { id?: string; chain?: string }): void {
   throw new Error(`${who} is for ${payer.chain}, and this storefront pays only on the Hanzo L1 (${HANZO}). Nothing was signed.`)
 }
 
-/** The one requirement this page signs: exact, EIP-3009, on the Hanzo L1, in an asset it knows. */
+/** The one requirement this page signs: exact, EIP-3009, in a pinned asset on a pinned network. */
 export function payable(r: Required): Requirements | null {
-  return r.accepts.find((a) => a.scheme === 'exact' && (a.extra?.assetTransferMethod ?? 'eip3009') === 'eip3009' && places(a) !== null) ?? null
+  return r.accepts.find((a) => a.scheme === 'exact' && (a.extra?.assetTransferMethod ?? 'eip3009') === 'eip3009' && asset(a) !== null) ?? null
 }
 
 /** What a job's payment signs, once `vet` checked it. */
@@ -127,17 +151,17 @@ const ZERO = /^0x0{40}$/i
 
 /**
  * The terms a 402 names for a job, checked before anything is signed: they are for
- * a job, on the Hanzo L1 in an asset this page knows the scale of, for exactly the
- * dollars the buyer cleared, and to a payee that is an address other than the
- * payer's own. The platform cannot ask the wallet for anything else: other terms
- * are refused, and nothing is signed.
+ * a job, in a pinned asset — network, token contract and domain — for exactly the
+ * dollars the buyer cleared in that asset's scale, and to a payee that is an
+ * address other than the payer's own. The platform cannot ask the wallet for
+ * anything else: other terms are refused, and nothing is signed.
  */
 export function vet(r: Required, amount: string, payer: string): Vetted {
   const job = /^job:([A-Za-z0-9_-]+)$/.exec(r.resource.url)?.[1]
   if (!job) throw new Error(`The payment terms are for ${r.resource.url}, not a job. Nothing was signed.`)
   const accepted = payable(r)
-  if (!accepted) throw new Error('The payment terms name no chain and asset this storefront can sign for. Nothing was signed.')
-  const scale = places(accepted) ?? 0
+  if (!accepted) throw new Error('The payment terms name no network and token contract this storefront signs for. Nothing was signed.')
+  const scale = asset(accepted)?.decimals ?? 0
   const asked = /^\d{1,78}$/.test(accepted.amount) ? BigInt(accepted.amount) : null
   if (asked === null) throw new Error('The payment terms name no amount. Nothing was signed.')
   if (asked !== atomic(amount, scale)) {
@@ -147,7 +171,6 @@ export function vet(r: Required, amount: string, payer: string): Vetted {
   if (!isAddress(to, { strict: false }) || ZERO.test(to) || to.toLowerCase() === payer.toLowerCase()) {
     throw new Error(`The payment terms pay ${to || 'no one'}, which is not a seller's address. Nothing was signed.`)
   }
-  if (!isAddress(accepted.asset, { strict: false })) throw new Error('The payment terms name no token contract. Nothing was signed.')
   return { job, accepted }
 }
 
@@ -167,8 +190,10 @@ const hex = (a: string) => a.toLowerCase() as Hex
 
 /** The EIP-712 digest the payer's wallet signs: TransferWithAuthorization in the token's domain. */
 export function digest(req: Requirements, a: Authorization): Hex {
+  const verifyingContract = contract(req)
+  if (verifyingContract === null) throw new Error(`asset ${req.asset} is not a token contract`)
   return hashTypedData({
-    domain: { name: req.extra?.name ?? '', version: req.extra?.version ?? '', chainId: BigInt(chainId(req.network)), verifyingContract: hex(req.asset) },
+    domain: { name: req.extra?.name ?? '', version: req.extra?.version ?? '', chainId: BigInt(chainId(req.network)), verifyingContract: hex(verifyingContract) },
     types: {
       TransferWithAuthorization: [
         { name: 'from', type: 'address' },

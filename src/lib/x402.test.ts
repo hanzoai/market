@@ -1,6 +1,6 @@
 import { recoverAddress } from 'viem'
 
-import { chainId, digest, nonce, onHanzo, payable, payment, places, rail, terms, type Required } from '~/lib/x402'
+import { asset, chainId, contract, digest, nonce, onHanzo, payable, payment, rail, terms, type Required } from '~/lib/x402'
 
 // A payment signed by cloud's own client half, apps/x402.Sign at hanzo-inc/cloud
 // 725e61052, for these exact inputs, and accepted by its Verify. The digest this
@@ -28,13 +28,25 @@ const CLOUD = {
   },
 }
 
+// The same, for the terms cloud names while its operator pins no token contract
+// (CLOUD_X402_ASSET unset): asset "" — the zero address in the EIP-712 domain,
+// which cloud's Sign (039a518e9) signs identically for "" and 0x000…0.
+const LEDGER = {
+  accepted: { ...CLOUD.accepted, asset: '' },
+  signature:
+    '0x24dd4d82f2e67fc5b4be6905fa3a628f475d622b954b8f4f15bcccc967707ae85627837b7616e52e1d3858378cef3ca10411c5a1ab709977bd94e9861342ca8200',
+  authorization: { ...CLOUD.authorization, nonce: '0xab00000000000000000000000000000000000000000000000000000000000002' },
+}
+
 const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64')
 
 describe('x402', () => {
   it('computes the digest cloud verifies', async () => {
-    const h = digest(CLOUD.accepted, CLOUD.authorization)
-    const signer = await recoverAddress({ hash: h, signature: CLOUD.signature as `0x${string}` })
-    expect(signer.toLowerCase()).toBe(CLOUD.authorization.from.toLowerCase())
+    for (const f of [CLOUD, LEDGER, { ...LEDGER, accepted: { ...LEDGER.accepted, asset: '0x0000000000000000000000000000000000000000' } }]) {
+      const signer = await recoverAddress({ hash: digest(f.accepted, f.authorization), signature: f.signature as `0x${string}` })
+      expect(signer.toLowerCase()).toBe(f.authorization.from.toLowerCase())
+    }
+    expect(() => digest({ ...CLOUD.accepted, asset: 'usdc' }, CLOUD.authorization)).toThrow(/not a token contract/)
   })
 
   it('reads the terms from a 402 problem document', () => {
@@ -47,24 +59,35 @@ describe('x402', () => {
     expect(terms({ paymentRequired: b64({ x402Version: 2, accepts: [] }) })).toBeNull()
   })
 
-  it('signs only exact EIP-3009 on the Hanzo L1', () => {
-    const r: Required = { x402Version: 2, resource: { url: 'job:job_1' }, accepts: [{ ...CLOUD.accepted, network: 'solana:mainnet' }, CLOUD.accepted] }
-    expect(payable(r)).toBe(CLOUD.accepted)
+  it('signs only exact EIP-3009 in a pinned asset', () => {
+    const r: Required = { x402Version: 2, resource: { url: 'job:job_1' }, accepts: [{ ...LEDGER.accepted, network: 'solana:mainnet' }, LEDGER.accepted] }
+    expect(payable(r)).toBe(LEDGER.accepted)
     // Red market-19: the same USDC domain on Ethereum is another chain's money.
     const mainnet = { ...CLOUD.accepted, network: 'eip155:1', asset: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' }
     expect(payable({ ...r, accepts: [mainnet] })).toBeNull()
-    expect(places(mainnet)).toBeNull()
-    expect(payable({ ...r, accepts: [{ ...CLOUD.accepted, extra: { assetTransferMethod: 'permit2', name: 'USD Coin', version: '2' } }] })).toBeNull()
-    expect(payable({ ...r, accepts: [{ ...CLOUD.accepted, scheme: 'upto' }] })).toBeNull()
+    // Red market-19: on the Hanzo L1 too the asset is pinned by contract, not by name: any other contract is another token.
+    expect(payable({ ...r, accepts: [CLOUD.accepted] })).toBeNull()
+    expect(payable({ ...r, accepts: [{ ...LEDGER.accepted, extra: { assetTransferMethod: 'permit2', name: 'USD Coin', version: '2' } }] })).toBeNull()
+    expect(payable({ ...r, accepts: [{ ...LEDGER.accepted, scheme: 'upto' }] })).toBeNull()
   })
 
-  it('signs only an asset whose scale it knows: USDC, 6 places', () => {
-    const r: Required = { x402Version: 2, resource: { url: 'job:job_1' }, accepts: [CLOUD.accepted] }
-    expect(places(CLOUD.accepted)).toBe(6)
-    const other = { ...CLOUD.accepted, extra: { assetTransferMethod: 'eip3009', name: 'Dai Stablecoin', version: '1' } }
-    expect(places(other)).toBeNull()
-    expect(payable({ ...r, accepts: [other] })).toBeNull()
-    expect(places({ ...CLOUD.accepted, extra: undefined })).toBeNull()
+  it('pins network → token contract → domain and scale', () => {
+    const usdc = { name: 'USD Coin', version: '2', decimals: 6 }
+    expect(asset(LEDGER.accepted)).toEqual(usdc)
+    expect(asset({ ...LEDGER.accepted, asset: '0x0000000000000000000000000000000000000000' })).toEqual(usdc)
+    expect(contract(LEDGER.accepted)).toBe('0x0000000000000000000000000000000000000000')
+    expect(contract(CLOUD.accepted)).toBe(CLOUD.accepted.asset.toLowerCase())
+    expect(contract({ ...CLOUD.accepted, asset: 'usdc' })).toBeNull()
+    for (const other of [
+      CLOUD.accepted,
+      { ...LEDGER.accepted, asset: 'usdc' },
+      { ...LEDGER.accepted, network: 'eip155:36962' },
+      { ...LEDGER.accepted, network: 'constructor' },
+      { ...LEDGER.accepted, extra: { assetTransferMethod: 'eip3009', name: 'Dai Stablecoin', version: '1' } },
+      { ...LEDGER.accepted, extra: { assetTransferMethod: 'eip3009', name: 'USD Coin', version: '1' } },
+      { ...LEDGER.accepted, extra: undefined },
+    ])
+      expect(asset(other)).toBeNull()
   })
 
   it('pays only from a wallet on the Hanzo L1, as cloud stores its chain', () => {
@@ -84,13 +107,13 @@ describe('x402', () => {
   })
 
   it('encodes the payment the rail parses', () => {
-    const r: Required = { x402Version: 2, resource: { url: 'job:job_1' }, accepts: [CLOUD.accepted] }
-    const sent = JSON.parse(Buffer.from(payment(r, CLOUD.accepted, CLOUD.authorization, CLOUD.signature), 'base64').toString())
+    const r: Required = { x402Version: 2, resource: { url: 'job:job_1' }, accepts: [LEDGER.accepted] }
+    const sent = JSON.parse(Buffer.from(payment(r, LEDGER.accepted, LEDGER.authorization, LEDGER.signature), 'base64').toString())
     expect(sent).toEqual({
       x402Version: 2,
       resource: { url: 'job:job_1' },
-      accepted: CLOUD.accepted,
-      payload: { signature: CLOUD.signature, authorization: CLOUD.authorization },
+      accepted: LEDGER.accepted,
+      payload: { signature: LEDGER.signature, authorization: LEDGER.authorization },
     })
   })
 })

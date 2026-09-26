@@ -1,5 +1,5 @@
 import type { Job, JobStatus } from '~/lib/market'
-import { acts, held, rateable, side, stages, WORDS, words } from '~/lib/job'
+import { acts, held, inflight, rateable, side, stages, WORDS, words } from '~/lib/job'
 
 const went = (...path: JobStatus[]): Pick<Job, 'status' | 'history'> => ({
   status: path.at(-1)!,
@@ -30,6 +30,23 @@ describe('job lifecycle', () => {
     ])
   })
 
+  // Cloud 9c011dc7e: a presented payment takes the quote to funding, which the buyer sees until the job opens.
+  it('draws a funding as the step before the job opens, and a job that opened without it', () => {
+    expect(drawn(went('quoted', 'funding'))).toEqual([
+      ['Funding', 'current'],
+      ['Open', 'todo'],
+      ['Accepted', 'todo'],
+      ['Delivered', 'todo'],
+      ['Released', 'todo'],
+    ])
+    expect(drawn(went('quoted', 'funding', 'open', 'accepted')).map(([label]) => label)).toEqual(['Open', 'Accepted', 'Delivered', 'Released'])
+    expect(words({ status: 'funding' })).toMatch(/^Funding — the payment is being set aside/)
+    expect((['quoted', 'funding'] as JobStatus[]).every((status) => inflight({ status }))).toBe(true)
+    expect((['open', 'accepted', 'delivered', 'released', 'disputed', 'declined', 'cancelled', 'refunded'] as JobStatus[]).some((status) => inflight({ status }))).toBe(false)
+    expect(acts({ status: 'funding' }, 'buyer')).toEqual([])
+    expect(held({ status: 'funding' })).toBe(false)
+  })
+
   // Red market-9: a job disputed while it was accepted was drawn as delivered.
   it('draws the steps a job took, so a dispute before delivery shows no delivery', () => {
     expect(drawn(went('open', 'accepted', 'disputed'))).toEqual([
@@ -48,7 +65,7 @@ describe('job lifecycle', () => {
 
   // Red market-7: the statuses cloud answers besides the four of the plain path.
   it('has words, a step and no next move for every ending', () => {
-    for (const s of ['quoted', 'open', 'accepted', 'delivered', 'released', 'disputed', 'declined', 'cancelled', 'refunded'] as JobStatus[])
+    for (const s of ['quoted', 'funding', 'open', 'accepted', 'delivered', 'released', 'disputed', 'declined', 'cancelled', 'refunded'] as JobStatus[])
       expect(WORDS[s]).toBeTruthy()
     expect(drawn(went('open', 'declined'))).toEqual([
       ['Open', 'done'],

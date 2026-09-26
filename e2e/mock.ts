@@ -4,13 +4,15 @@
 // its later reads. Anything the world does not know answers 404 problem+json —
 // exactly what the live gateway says for an operation it does not serve.
 //
-// The shapes are cloud's (hanzo-inc/cloud 725e61052). A hire is its two steps: a
+// The shapes are cloud's (hanzo-inc/cloud 039a518e9). A hire is its two steps: a
 // 402 with x402 terms, then the payment, whose signature is checked against the
 // terms with viem's own EIP-712 recovery — and the org wallet that signs it holds
-// a real key, generated per world. As in cloud's jobs.go, the same terms asked
-// again answer the quote already made, and the same payment presented again
-// answers the job it opened. `lose` drops the answer to a hire step after it took
-// effect, as a gateway timeout does.
+// a real key, generated per world. As in cloud's jobs.go, a hire sent with an
+// attempt is one job however often it is sent: the quote's terms while it is
+// quoted or funding, the job once it opened, 422 for another request under it.
+// A presented payment takes the quote to funding; a payment given up is refused
+// (nonce_replayed). `lose` drops the answer to a hire step after it took effect,
+// as a gateway timeout does.
 
 import type { Page, Route } from '@playwright/test'
 import { hashMessage, recoverAddress, recoverTypedDataAddress, type Hex } from 'viem'
@@ -32,10 +34,12 @@ export interface World {
   jobs: Row[]
   /** Every hire request, both steps. */
   hires: Row[]
-  /** The payment that opened each job, by job id. */
+  /** The payment presented for each job, by job id: the one that opened it, once it did. */
   paid: Record<string, string>
   /** How many answers to lose, per hire step, after the step took effect. */
   lose: { quote: number; pay: number }
+  /** How many presented payments the rail gives up instead of holding (x402 nonce_replayed: "sign another"). */
+  giveUp: number
   wallets: Row[]
   /** The key behind each wallet the org creates or holds. */
   keys: Record<string, PrivateKeyAccount>
@@ -62,7 +66,9 @@ export function wallet(w: World, id = 'wal_acme', name = 'Treasury', chain = 'ei
 
 /** The seller's payout address the x402 terms name. */
 const PAY_TO = '0x209693Bc6afc0C5328bA36FaF03C514EF312287C'
-const USDC = '0x5425890298aed601595a70AB815c96711a31Bc65'
+/** The token contract cloud names while its operator pins none (CLOUD_X402_ASSET unset): none, the zero address in the domain. */
+const ASSET = ''
+const NONE = '0x0000000000000000000000000000000000000000'
 
 export function world(over: Partial<World> = {}): World {
   return {
@@ -115,6 +121,7 @@ export function world(over: Partial<World> = {}): World {
     hires: [],
     paid: {},
     lose: { quote: 0, pay: 0 },
+    giveUp: 0,
     wallets: [],
     keys: {},
     apps: [
@@ -305,7 +312,7 @@ function terms(id: string, amount: string) {
         scheme: 'exact',
         network: 'eip155:36963',
         amount: String(Math.round(Number(amount) * 1e6)),
-        asset: USDC,
+        asset: ASSET,
         payTo: PAY_TO,
         maxTimeoutSeconds: 300,
         extra: { assetTransferMethod: 'eip3009', name: 'USD Coin', version: '2' },
@@ -315,7 +322,7 @@ function terms(id: string, amount: string) {
 }
 
 /** Whose signature a payment carries, recovered from the terms it answers — or why it is refused. */
-async function signer(payment: string): Promise<{ from: string; to: string; value: string; validBefore: number; resource: string } | string> {
+async function signer(payment: string): Promise<{ from: string; to: string; value: string; validBefore: number; nonce: string; resource: string } | string> {
   const p = JSON.parse(Buffer.from(payment, 'base64').toString()) as {
     x402Version: number
     resource: { url: string }
@@ -324,7 +331,7 @@ async function signer(payment: string): Promise<{ from: string; to: string; valu
   }
   const a = p.payload.authorization
   const got = await recoverTypedDataAddress({
-    domain: { name: p.accepted.extra.name, version: p.accepted.extra.version, chainId: 36963, verifyingContract: USDC },
+    domain: { name: p.accepted.extra.name, version: p.accepted.extra.version, chainId: 36963, verifyingContract: (p.accepted.asset || NONE) as Hex },
     types: {
       TransferWithAuthorization: [
         { name: 'from', type: 'address' },
@@ -340,13 +347,38 @@ async function signer(payment: string): Promise<{ from: string; to: string; valu
     signature: p.payload.signature,
   })
   if (got.toLowerCase() !== a.from.toLowerCase()) return `invalid_exact_evm_payload_signature: recovered ${got}, claimed ${a.from}`
-  return { from: a.from, to: a.to, value: a.value, validBefore: Number(a.validBefore), resource: p.resource.url }
+  return { from: a.from, to: a.to, value: a.value, validBefore: Number(a.validBefore), nonce: a.nonce, resource: p.resource.url }
 }
 
 const gatewayTimeout = (route: Route) => problem(route, 504, 'upstream request timeout')
 
+/** What a hire asks, as cloud digests it: the whole request but its payment and its attempt (jobs.go asked). */
+const asked = (body: Row) => JSON.stringify({ ...body, payment: undefined, attempt: undefined })
+
+/** The nonces the rail gave up: never held again (x402 planeAuthorize). */
+const givenUp = new WeakMap<World, Set<string>>()
+
+/** What each job's hire asked (jobs.asked). */
+const digests = new WeakMap<Row, string>()
+
+/** How many jobs a world has quoted: ids are never reused, as cloud's random ones are not. */
+const quoted = new WeakMap<World, number>()
+
 async function hire(route: Route, w: World, body: Row) {
   w.hires.push(body)
+  const attempt = typeof body.attempt === 'string' ? body.attempt : ''
+  if (attempt) {
+    // One attempt, one job (jobs.go hire): the same request answers the job it made.
+    const j = w.jobs.find((x) => x.buyerOrg === w.org && x.attempt === attempt)
+    if (j) {
+      if (digests.get(j) !== asked(body)) return problem(route, 422, `attempt ${attempt} made job ${String(j.id)} with another request: a new hire is a new attempt`)
+      if (j.status !== 'quoted' && j.status !== 'funding') return json(route, 201, j)
+      if (!body.payment) {
+        if (w.lose.quote > 0) return (w.lose.quote--, gatewayTimeout(route))
+        return ask(route, j)
+      }
+    }
+  }
   const l = w.shop.find((x) => x.id === body.listing)
   if (!l) return problem(route, 404, 'listing not found')
   const d = decide(w, { payee: l.publisherOrg, amount: body.amount, performed: body.performed, category: 'services', rail: 'x402' })
@@ -355,22 +387,27 @@ async function hire(route: Route, w: World, body: Row) {
     return problem(route, 409, `clearance ${String(d.id)}: this payment clears only net of withholding`)
   const amount = Number(body.amount).toFixed(2)
   if (!body.payment) {
-    // The same terms asked again: the quote they already have (store.go quoted).
-    let q = w.jobs.find(
-      (j) =>
-        j.status === 'quoted' &&
-        j.buyerOrg === w.org &&
-        j.listing === body.listing &&
-        j.brief === body.brief &&
-        j.amount === amount &&
-        j.deadline === body.deadline &&
-        (j.performed ?? '') === (body.performed ?? ''),
-    )
+    // Without an attempt, the same terms asked again: the quote they already have (store.go quoted).
+    let q = attempt
+      ? undefined
+      : w.jobs.find(
+          (j) =>
+            j.status === 'quoted' &&
+            !j.attempt &&
+            j.buyerOrg === w.org &&
+            j.listing === body.listing &&
+            j.brief === body.brief &&
+            j.amount === amount &&
+            j.deadline === body.deadline &&
+            (j.performed ?? '') === (body.performed ?? ''),
+        )
     if (!q) {
+      quoted.set(w, (quoted.get(w) ?? w.jobs.length) + 1)
       q = {
-        id: `job_${w.jobs.length + 1}`,
+        id: `job_${quoted.get(w)}`,
         listing: body.listing,
         title: l.title,
+        attempt: attempt || undefined,
         buyerOrg: w.org,
         sellerOrg: l.publisherOrg,
         amount,
@@ -382,37 +419,58 @@ async function hire(route: Route, w: World, body: Row) {
         deadline: body.deadline,
         review: 259_200,
         clearance: d.id,
-        escrow: { rail: 'x402', network: 'eip155:36963', contract: USDC },
+        escrow: { rail: 'x402', network: 'eip155:36963', contract: ASSET },
         history: [{ status: 'quoted', at: NOW, by: w.org }],
         createdAt: NOW,
         updatedAt: NOW,
       }
+      digests.set(q, asked(body))
       w.jobs.push(q)
     }
     if (w.lose.quote > 0) return (w.lose.quote--, gatewayTimeout(route))
-    const t = terms(String(q.id), amount)
-    return problem(route, 402, `sign the payment for job:${String(q.id)}`, { paymentRequired: Buffer.from(JSON.stringify(t)).toString('base64'), ...t })
+    return ask(route, q)
   }
   const who = await signer(body.payment as string)
   if (typeof who === 'string') return problem(route, 402, `the payment was refused: ${who}`)
   const id = who.resource.replace(/^job:/, '')
   const j = w.jobs.find((x) => x.id === id && x.buyerOrg === w.org)
   if (!j) return problem(route, 404, 'job not found')
-  if (j.status !== 'quoted') {
+  if ((j.attempt ?? '') !== attempt) return problem(route, 409, `the payment is for job ${id}, quoted under another attempt`)
+  if (j.status !== 'quoted' && j.status !== 'funding') {
     // The same payment again: the job it opened (jobs.go fund).
     return w.paid[id] === body.payment ? json(route, 200, j) : problem(route, 409, `job ${id} is already paid for`)
   }
   if (j.amount !== amount) return problem(route, 409, `the payment is for job ${id}, at another amount`)
   if (who.validBefore < Number(body.deadline) + 18 * 86_400) return problem(route, 402, 'the authorization must stay valid through the deadline')
+  const gone = givenUp.get(w) ?? new Set<string>()
+  givenUp.set(w, gone)
+  if (gone.has(who.nonce.toLowerCase())) return problem(route, 402, 'the payment was refused: this payment was given up: sign another (nonce_replayed)')
+  // Presented: the quote is funding, and keeps the payment (jobs.go present); a payment before it is given up.
+  if (w.paid[id] && w.paid[id] !== body.payment) {
+    const before = await signer(w.paid[id])
+    if (typeof before !== 'string') gone.add(before.nonce.toLowerCase())
+  }
   w.paid[id] = body.payment as string
+  if (j.status === 'quoted') Object.assign(j, { status: 'funding', history: [...(j.history as Row[]), { status: 'funding', at: NOW, by: w.org }] })
+  if (w.giveUp > 0) {
+    w.giveUp--
+    gone.add(who.nonce.toLowerCase())
+    return problem(route, 402, 'the payment was refused: this payment was given up: sign another (nonce_replayed)')
+  }
   Object.assign(j, {
     status: 'open',
     payer: who.from,
-    escrow: { rail: 'x402', network: 'eip155:36963', contract: USDC, payTo: PAY_TO },
+    escrow: { rail: 'x402', network: 'eip155:36963', contract: ASSET, payTo: PAY_TO },
     history: [...(j.history as Row[]), { status: 'open', at: NOW, by: w.org }],
   })
   if (w.lose.pay > 0) return (w.lose.pay--, gatewayTimeout(route))
   return json(route, 201, j)
+}
+
+/** The 402 that names what to sign for a quoted job (jobs.go ask). */
+function ask(route: Route, q: Row) {
+  const t = terms(String(q.id), String(q.amount))
+  return problem(route, 402, `sign the payment for job:${String(q.id)}`, { paymentRequired: Buffer.from(JSON.stringify(t)).toString('base64'), ...t })
 }
 
 async function api(route: Route, w: World) {
@@ -563,8 +621,10 @@ async function api(route: Route, w: World) {
 
   // ── jobs ──
   if (method === 'GET' && path === '/v1/marketplace/jobs') {
+    // The buyer sees its quotes and fundings; a seller never does (jobs.go listJobs).
     const role = url.searchParams.get('role')
-    return json(route, 200, { jobs: w.jobs.filter((j) => (role === 'seller' ? j.sellerOrg : j.buyerOrg) === w.org) })
+    const mine = w.jobs.filter((j) => (role === 'seller' ? j.sellerOrg === w.org && j.status !== 'quoted' && j.status !== 'funding' : j.buyerOrg === w.org))
+    return json(route, 200, { jobs: mine })
   }
   if (method === 'POST' && path === '/v1/marketplace/jobs') return hire(route, w, body)
   const jobPath = path.match(/^\/v1\/marketplace\/jobs\/([^/]+)(?:\/(accept|decline|cancel|deliver|release|dispute|refund|feedback))?$/)

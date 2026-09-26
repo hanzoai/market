@@ -1,19 +1,19 @@
 // Checkout. A platform tool is installed and paid per call over x402. Everything a
 // seller lists is hired for a job: clearance first, in plain words, then the
 // buyer's wallet signs an x402 payment for exactly that job, which cloud sets
-// aside until the buyer releases it. A payment whose answer never came back is
-// sent again as it was, never signed anew, so one hire opens one job: this
-// browser keeps it until the platform answers, through a reload and in every tab.
+// aside until the buyer releases it. A hire is one attempt, which cloud answers
+// with one job however often it is sent; a hire whose answer never came back is
+// sent again as it was.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Text, XStack, YStack } from '@hanzo/ui'
 import { useNavigate, useParams } from 'react-router'
 
 import { sellerName } from '~/lib/catalog'
 import { answers, asksWhere, facts, headline, net, netOnly, payable, todos, withholding } from '~/lib/clearance'
 import { lost as unanswered, notServed } from '~/lib/http'
-import { words } from '~/lib/job'
-import { claim, clearance, forget, hire, hires, install, keep, save, saved, shopListing, Taken, underway, wallets, type Attempt, type ClearIn, type Clearance, type Job, type ShopListing, type Wallet } from '~/lib/market'
+import { inflight, words } from '~/lib/job'
+import { clearance, hire, install, shopListing, underway, wallets, type Attempt, type ClearIn, type Clearance, type Job, type ShopListing, type Wallet } from '~/lib/market'
 import { dollars, each, free, usd } from '~/lib/money'
 import { nonce, onHanzo } from '~/lib/x402'
 import { useRead, useRun, type Read } from '~/lib/read'
@@ -108,24 +108,21 @@ const alpha2 = (v: string) => (/^[A-Za-z]{2}$/.test(v.trim()) ? v.trim().toUpper
  * the platform allowed in full; cloud clears the job again when it is quoted,
  * funded and released.
  *
- * One hire is one attempt, kept by this browser from its first ask until the
- * platform answers it. If the answer never comes back, the attempt is the only
- * hire offered for this listing until it is answered, and it is sent again as it
- * was — the same terms, deadline, authorization and signed payment — which cloud
- * answers with the job it opened: a second payment could open a second job while
- * the first may still be funding. Only an attempt the wallet was never asked to
- * sign may be dropped. A new attempt first asks whether the org already has a job
- * under way for exactly these terms, and whether another tab has a hire kept.
+ * One hire is one attempt. If its answer never comes back, this page keeps it and
+ * offers only to send it again as it was — the same attempt, terms, deadline,
+ * authorization and payment — which cloud answers with the one job it makes. Only
+ * an attempt the wallet was never asked to sign may be dropped. A new attempt
+ * first asks whether the org already has a job for exactly these terms in flight
+ * or under way: a hire lost to a reload, another tab or another device is there.
  */
 function Hire({ listing }: { listing: ShopListing }) {
   const go = useNavigate()
   const session = useSession()
-  const org = session.org ?? ''
   const mine = useRead(() => wallets(), [session.org])
-  // The attempt whose answer never came back, from this page, an earlier one or another tab.
-  const [kept, setKept] = useState(() => saved(org, listing.id))
-  // Whether it is in this browser's storage, shared with every tab (storage can be refused).
-  const [shared, setShared] = useState(true)
+  // The attempt whose answer never came back, to send again as it was.
+  const [kept, setKept] = useState<Attempt | null>(null)
+  // Attempts this page ended without a payment: their quotes can never open.
+  const unpaid = useRef(new Set<string>())
   const [brief, setBrief] = useState('')
   const [amount, setAmount] = useState(dollars(listing.price) ?? '')
   const [days, setDays] = useState('7')
@@ -153,47 +150,30 @@ function Hire({ listing }: { listing: ShopListing }) {
   const ready = cleared && brief.trim().length > 0 && payer !== null && !busy
   const dup = already && already.brief === brief.trim() && dollars(already.amount) === gross ? already : null
 
-  // Another tab kept a hire, or the platform answered one there: this tab shows the same.
-  useEffect(() => {
-    const follow = (e: StorageEvent) => {
-      if (hires(e.key)) setKept(saved(org, listing.id))
-    }
-    window.addEventListener('storage', follow)
-    return () => window.removeEventListener('storage', follow)
-  }, [org, listing.id])
-
   // Asked once where the work is performed, the question stays on the form.
   const [askWhere, setAskWhere] = useState(false)
   useEffect(() => {
     if (asksWhere(decided)) setAskWhere(true)
   }, [decided])
 
-  /**
-   * Send a kept attempt until the platform answers it. Shared, it is read back and
-   * kept at each step (drawn, signed), so what another tab did with it is taken up
-   * and an answer there ends it here.
-   */
-  const send = async (a: Attempt, inStore: boolean) => {
+  /** Send an attempt until the platform answers it: unanswered, it is kept as it stands; answered, it is over. */
+  const send = async (a: Attempt) => {
     try {
-      const opened = await hire(a, inStore ? keep(org, listing.id) : undefined)
-      forget(org, listing.id, a, true)
+      const opened = await hire(a)
       setKept(null)
       await go(`/jobs/${encodeURIComponent(opened.id)}`)
     } catch (e) {
-      if (e instanceof Taken) {
-        // Another tab answered, dropped or replaced it: show what is kept now.
-        setKept(saved(org, listing.id))
-      } else if (unanswered(e)) {
-        // Unanswered: keep the attempt as it stands, with whatever another tab added.
-        save(org, listing.id, a)
-        setKept({ ...a })
-      } else {
-        // Answered: it is over, and the form is the buyer's again — unless another
-        // tab drew or signed with it meanwhile, whose payment may still open a job.
-        setKept(forget(org, listing.id, a) ? null : saved(org, listing.id))
-      }
+      const open = unanswered(e)
+      if (!open && !a.signed) unpaid.current.add(a.id)
+      setKept(open ? { ...a } : null)
       throw e
     }
+  }
+
+  // Drop an attempt the wallet was never asked to sign: nothing can ever pay its quote.
+  const drop = () => {
+    if (kept) unpaid.current.add(kept.id)
+    setKept(null)
   }
 
   const pay = () =>
@@ -210,24 +190,11 @@ function Hire({ listing }: { listing: ShopListing }) {
       }
       if (again) setAgain(false)
       else {
-        const had = await underway(req)
+        const had = await underway(req, unpaid.current)
         if (had) return setAlready(had)
       }
-      const a: Attempt = { id: nonce(), req, from: { id: payer.id, address: payer.address, chain: payer.chain } }
-      // Kept before the first ask — unless another tab kept one meanwhile, which is shown instead.
-      const { had, kept: inStore } = claim(org, listing.id, a)
-      if (had) return setKept(had)
-      setShared(inStore)
-      await send(a, inStore)
+      await send({ id: nonce(), req, from: { id: payer.id, address: payer.address, chain: payer.chain } })
     })
-
-  // Drop an attempt the wallet was never asked to sign — unless another tab has asked it since.
-  const drop = () => {
-    if (!kept) return
-    const now = saved(org, listing.id)
-    if (now?.id === kept.id && now.auth) return setKept(now)
-    setKept(forget(org, listing.id, kept) ? null : saved(org, listing.id))
-  }
 
   const title = { eyebrow: 'Hire', title: listing.title, says: `Sold by ${sellerName(listing.seller.org)} · ${free(listing.price) ? 'Price agreed per job' : each(listing.price, listing.kind)}` }
 
@@ -241,11 +208,11 @@ function Hire({ listing }: { listing: ShopListing }) {
             { label: '3 Job opened', stage: 'todo' },
           ]}
         />
-        <Section title="Your hire" says="The platform’s answer to it never came back. Until it does, this is the one hire offered here for this listing, in every tab.">
+        <Section title="Your hire" says="The platform’s answer to it never came back. Send it again as it was: the platform answers it with the one job it makes.">
           <Panel>
             <Unanswered attempt={kept} />
             <XStack items="center" gap="$3" flexWrap="wrap">
-              <Act loud disabled={busy} onPress={() => void run(() => send(kept, shared))}>
+              <Act loud disabled={busy} onPress={() => void run(() => send(kept))}>
                 {kept.signed ? 'Send the same payment again' : 'Ask again with the same terms'}
               </Act>
               {kept.auth ? (
@@ -311,7 +278,7 @@ function Hire({ listing }: { listing: ShopListing }) {
           {dup ? (
             <YStack gap="$2" data-underway="">
               <Text fontSize="$2" color="$ink">
-                {`Your organization already has job ${dup.id} under way for exactly this: ${usd(dup.amount, dup.currency)}, ${words(dup).split(' — ')[0].toLowerCase()}. Hiring again opens a second job and sets the amount aside twice.`}
+                {`Your organization already has job ${dup.id} ${inflight(dup) ? 'in flight' : 'under way'} for exactly this: ${usd(dup.amount, dup.currency)}, ${words(dup).split(' — ')[0].toLowerCase()}. Hiring again opens a second job and sets the amount aside twice.`}
               </Text>
               <XStack gap="$2" flexWrap="wrap">
                 <Go to={`/jobs/${encodeURIComponent(dup.id)}`}>{`Open ${dup.id}`}</Go>
@@ -353,9 +320,9 @@ function Unanswered({ attempt }: { attempt: Attempt }) {
       </Text>
       <Text fontSize="$2" color="$soft">
         {signed
-          ? `Your wallet signed ${usd(signed.amount)} in USD Coin to ${signed.payTo} for job ${signed.job}. The platform may already have opened it. Sending the same payment again is safe: it answers with the job it opened, or opens it once.`
+          ? `Your wallet signed ${usd(signed.amount)} to ${signed.payTo} for job ${signed.job}. The platform may already have opened it. Sending the same payment again is safe: it answers with the job it opened, or opens it once.`
           : auth
-            ? 'Your wallet was asked to sign, and its answer never came back, so it may have signed. Asking again signs the same authorization, with the same nonce, so at most one payment can ever move money.'
+            ? `Your wallet was asked to sign for job ${auth.job}, and its answer never came back, so it may have signed. Asking again signs the same authorization, with the same nonce, so at most one payment for the job can move money.`
             : 'Nothing was signed. Asking again with the same terms and deadline gets the same quote, not a second one.'}
       </Text>
     </YStack>

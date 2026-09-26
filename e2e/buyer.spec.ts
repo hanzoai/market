@@ -76,10 +76,14 @@ test('browse → listing → sign in → clearance → the buyer wallet signs an
   expect(w.hires).toHaveLength(2)
   expect(w.hires[0]).not.toHaveProperty('payment')
   expect(w.hires[1]).toMatchObject({ listing: 'lst_research', amount: '250.00', category: 'service', wallet: 'wal_acme', payment: expect.any(String) })
+  // One attempt names the hire in both steps, so cloud answers it with one job however often it is sent.
+  expect(w.hires[0].attempt).toMatch(/^0x[0-9a-f]{64}$/)
+  expect(w.hires[1].attempt).toBe(w.hires[0].attempt)
   // The mock recovered the signer from the terms with viem: it is the buyer's wallet.
   expect(w.jobs[0]).toMatchObject({ status: 'open', payer: payer.address })
-  // The job shows whom the signed payment pays.
+  // The job shows whom the signed payment pays, and that no token contract moves it: the rail's ledger does.
   await expect(page.getByText('0x209693Bc6afc0C5328bA36FaF03C514EF312287C')).toBeVisible()
+  await expect(page.getByText('none: the rail’s own ledger')).toBeVisible()
 
   // The buyer may take the job back before the seller accepts it.
   await expect(page.getByRole('button', { name: 'Cancel the job' })).toBeVisible()
@@ -224,7 +228,7 @@ test('a payment whose answer was lost is sent again as it was, and opens one job
   await expect(page.getByText('upstream request timeout')).toBeVisible()
   const held = page.locator('[data-unanswered]')
   await expect(held).toContainText('$250.00 for “A market map.”')
-  await expect(held).toContainText('Your wallet signed $250.00 in USD Coin to 0x209693Bc6afc0C5328bA36FaF03C514EF312287C for job job_1')
+  await expect(held).toContainText('Your wallet signed $250.00 to 0x209693Bc6afc0C5328bA36FaF03C514EF312287C for job job_1')
   // Red market-18: a signed payment whose answer is unknown is the only hire offered.
   await expect(page.getByRole('button', { name: 'Start over' })).toHaveCount(0)
   await expect(page.getByRole('textbox', { name: 'What do you need done?' })).toHaveCount(0)
@@ -236,6 +240,7 @@ test('a payment whose answer was lost is sent again as it was, and opens one job
   expect(opened(w).map((j) => j.id)).toEqual(['job_1'])
   expect(w.hires.map((h) => (h.payment ? 'pay' : 'quote'))).toEqual(['quote', 'pay', 'pay'])
   expect(w.hires[2].payment).toBe(w.hires[1].payment)
+  expect(new Set(w.hires.map((h) => h.attempt)).size).toBe(1)
   expect(signed).toHaveLength(1)
 })
 
@@ -253,6 +258,7 @@ test('a quote whose answer was lost is asked again with the same deadline, and g
   const quotes = w.hires.filter((h) => !h.payment)
   expect(quotes).toHaveLength(2)
   expect(quotes[1].deadline).toBe(quotes[0].deadline)
+  expect(quotes[1].attempt).toBe(quotes[0].attempt)
   expect(w.jobs.map((j) => [j.id, j.status])).toEqual([['job_1', 'open']])
 })
 
@@ -273,7 +279,6 @@ test('a signature whose answer was lost is asked for again over the same authori
   await expect(page.locator('[data-unanswered]')).toContainText('so it may have signed')
   // The wallet may have signed: dropping this authorization for a new one is not offered.
   await expect(page.getByRole('button', { name: 'Start over' })).toHaveCount(0)
-  await page.reload()
   await page.getByRole('button', { name: 'Ask again with the same terms' }).click()
   await expect(page).toHaveURL(/\/jobs\/job_1$/)
   expect(signed).toHaveLength(2)
@@ -282,179 +287,159 @@ test('a signature whose answer was lost is asked for again over the same authori
 })
 
 /** The payment, as the page decoded would send it. */
-const decode = (s: string) => JSON.parse(Buffer.from(s, 'base64').toString()) as { resource: { url: string } }
+const decode = (s: string) => JSON.parse(Buffer.from(s, 'base64').toString()) as { resource: { url: string }; payload: { authorization: { nonce: string } } }
 
 /**
  * Cloud answers late: the gateway gives up (504) while cloud is still funding the
- * first payment, and the job opens `after` ms later. Only the first payment is late.
+ * first payment, so the job stays funding until the test opens it. Only the first
+ * payment is late.
  */
-const slowFund = (page: Page, w: World, after: number) =>
+const slowFund = (page: Page, w: World) =>
   page.route(/\/v1\/marketplace\/jobs$/, (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}') as { payment?: string }
     if (route.request().method() !== 'POST' || !body.payment || Object.keys(w.paid).length) return route.fallback()
     const id = decode(body.payment).resource.url.replace(/^job:/, '')
     w.hires.push(body)
     w.paid[id] = body.payment
-    setTimeout(() => Object.assign(w.jobs.find((j) => j.id === id)!, { status: 'open' }), after)
+    Object.assign(w.jobs.find((j) => j.id === id)!, { status: 'funding' })
     return route.fulfill({ status: 504, contentType: 'application/problem+json', body: JSON.stringify({ status: 504, detail: 'upstream request timeout' }) })
   })
 
 // Red market-18: a reload threw the signed payment away while cloud was still
-// funding it; the next attempt quoted anew and opened a second job.
-test('a reload keeps a payment whose answer was lost, and sends that again', async ({ page }) => {
+// funding it; the next attempt quoted anew and opened a second job. Cloud now
+// lists the buyer's quotes and fundings, so the hire in flight is found there —
+// by a reload, another tab or another device — and nothing new starts unasked.
+test('after a reload, a hire still being funded is found in flight, and no second one starts unasked', async ({ page }) => {
   const w = world()
   wallet(w)
-  await toCheckout(page, w, () => slowFund(page, w, 2000))
+  await toCheckout(page, w, () => slowFund(page, w))
   const signed = signings(page)
   await (await cleared(page)).click()
   await expect(page.getByText('upstream request timeout')).toBeVisible()
+  const attempt = w.hires[0].attempt
 
   await page.reload()
-  await expect(page.locator('[data-unanswered]')).toContainText('for job job_1')
-  await page.getByRole('button', { name: 'Send the same payment again' }).click()
-  await expect(page).toHaveURL(/\/jobs\/job_1$/)
-  await page.waitForTimeout(2500)
-  expect(opened(w).map((j) => j.id)).toEqual(['job_1'])
-  expect(w.hires.map((h) => (h.payment ? 'pay' : 'quote'))).toEqual(['quote', 'pay', 'pay'])
-  expect(w.hires[2].payment).toBe(w.hires[1].payment)
-  expect(signed).toHaveLength(1)
+  const pay = await cleared(page)
+  const before = w.hires.length
+  await pay.click()
+  await expect(page.locator('[data-underway]')).toContainText('Your organization already has job job_1 in flight for exactly this: $250.00, funding.')
+  await expect(pay).toBeDisabled()
+  expect(w.hires).toHaveLength(before)
 
-  // Answered, it is forgotten: the next visit starts afresh.
-  await page.goto('/checkout/lst_research')
-  await expect(page.getByRole('textbox', { name: 'What do you need done?' })).toHaveValue('')
-  await expect(page.locator('[data-unanswered]')).toHaveCount(0)
+  // The buyer's jobs list it as a hire in flight, with its attempt.
+  await page.getByRole('link', { name: 'Open job_1' }).click()
+  await expect(page.getByText(/^Funding — the payment is being set aside/)).toBeVisible()
+  await expect(page.getByText(String(attempt))).toBeVisible()
+  await page.goto('/jobs')
+  const flying = page.locator('[data-inflight]')
+  await expect(flying.getByRole('heading', { name: 'In flight' })).toBeVisible()
+  await expect(flying).toContainText('Deep Research Agent')
+  await expect(flying).toContainText(`attempt ${String(attempt)}`)
+  await expect(flying).toContainText('funding')
+
+  // Cloud finishes funding it: it opens once, as the one job.
+  Object.assign(w.jobs[0], { status: 'open' })
+  await page.reload()
+  await expect(page.locator('[data-inflight]')).toHaveCount(0)
+  await expect(page.getByText('open', { exact: true })).toBeVisible()
+  expect(opened(w).map((j) => j.id)).toEqual(['job_1'])
+  expect(signed).toHaveLength(1)
 })
 
-// Red market-18: another tab offered a fresh Pay while cloud was still funding the
-// first payment. Every tab of this browser offers only the kept one.
-test('every tab offers only the kept payment until the platform answers it', async ({ context, page }) => {
+// A quote is in flight too: after a reload the page cannot know whether a payment
+// for it is on its way to the platform.
+test('after a reload, the quote of a hire whose answer was lost is found in flight', async ({ page }) => {
+  const w = world({ lose: { quote: 1, pay: 0 } })
+  wallet(w)
+  await toCheckout(page, w)
+  await (await cleared(page)).click()
+  await expect(page.locator('[data-unanswered]')).toContainText('Nothing was signed.')
+  await page.reload()
+  const pay = await cleared(page)
+  await pay.click()
+  await expect(page.locator('[data-underway]')).toContainText('Your organization already has job job_1 in flight for exactly this: $250.00, quoted.')
+  expect(w.hires).toHaveLength(1)
+  await page.getByRole('button', { name: 'Hire again anyway' }).click()
+  await pay.click()
+  await expect(page).toHaveURL(/\/jobs\/job_2$/)
+})
+
+// A quote this page asked and never paid — dropped with Start over, or answered with
+// a refusal before anything was signed — can never open, so it is not in the way.
+test('a quote this page ended unpaid does not stand in the way of the next hire', async ({ page }) => {
+  const w = world({ lose: { quote: 1, pay: 0 } })
+  wallet(w)
+  let refuse = 1
+  await toCheckout(page, w, () =>
+    page.route(/\/v1\/wallet\/[^/]+\/sign$/, (route) =>
+      refuse-- > 0
+        ? route.fulfill({ status: 403, contentType: 'application/problem+json', body: JSON.stringify({ status: 403, detail: 'this member may not sign for wal_acme' }) })
+        : route.fallback(),
+    ),
+  )
+  const pay = await cleared(page)
+  await pay.click()
+  await page.getByRole('button', { name: 'Start over' }).click()
+  await pay.click()
+  await expect(page.getByText('this member may not sign for wal_acme')).toBeVisible()
+  await expect(page.locator('[data-unanswered]')).toHaveCount(0)
+  await pay.click()
+  await expect(page).toHaveURL(/\/jobs\/job_3$/)
+  await expect(page.locator('[data-underway]')).toHaveCount(0)
+  const attempts = w.hires.map((h) => h.attempt)
+  expect(new Set(attempts).size).toBe(3)
+  expect(w.jobs.map((j) => [j.id, j.status])).toEqual([
+    ['job_1', 'quoted'],
+    ['job_2', 'quoted'],
+    ['job_3', 'open'],
+  ])
+})
+
+// CM-R32: the rail gave the payment up ("sign another"), and a kept nonce is never
+// held again: the page signs a fresh authorization for the same job, under the same attempt, once.
+test('a payment the rail gave up is signed afresh for the same job, and opens it once', async ({ page }) => {
+  const w = world({ giveUp: 1 })
+  wallet(w)
+  await toCheckout(page, w)
+  const signed = signings(page)
+  await (await cleared(page)).click()
+  await expect(page).toHaveURL(/\/jobs\/job_1$/)
+  expect(w.hires.map((h) => (h.payment ? 'pay' : 'quote'))).toEqual(['quote', 'pay', 'quote', 'pay'])
+  expect(new Set(w.hires.map((h) => h.attempt)).size).toBe(1)
+  const [first, second] = w.hires.filter((h) => h.payment).map((h) => decode(String(h.payment)))
+  expect(second.resource.url).toBe('job:job_1')
+  expect(second.payload.authorization.nonce).not.toBe(first.payload.authorization.nonce)
+  expect(signed).toHaveLength(2)
+  expect(w.jobs.map((j) => [j.id, j.status])).toEqual([['job_1', 'open']])
+})
+
+// CM-R32: a payment whose answer was lost, sent again after the platform lapsed its
+// quote and dropped it (404): the attempt asks again, and pays the job quoted anew
+// with an authorization of its own.
+test('a kept payment whose quote lapsed asks again, and pays the job quoted anew', async ({ page }) => {
   const w = world()
   wallet(w)
-  await toCheckout(page, w, () => slowFund(page, w, 2000))
+  let late = 0
+  await toCheckout(page, w, () =>
+    page.route(/\/v1\/marketplace\/jobs$/, (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}') as { payment?: string }
+      if (route.request().method() !== 'POST' || !body.payment || late++) return route.fallback()
+      w.hires.push(body)
+      return route.fulfill({ status: 504, contentType: 'application/problem+json', body: JSON.stringify({ status: 504, detail: 'upstream request timeout' }) })
+    }),
+  )
   const signed = signings(page)
   await (await cleared(page)).click()
   await expect(page.getByText('upstream request timeout')).toBeVisible()
-
-  const other = await context.newPage()
-  await mock(other, w)
-  await other.goto('/checkout/lst_research')
-  await expect(other.locator('[data-unanswered]')).toContainText('for job job_1')
-  await expect(other.getByRole('button', { name: /^Pay / })).toHaveCount(0)
-  await other.getByRole('button', { name: 'Send the same payment again' }).click()
-  await expect(other).toHaveURL(/\/jobs\/job_1$/)
-  await other.waitForTimeout(2500)
-  expect(opened(w).map((j) => j.id)).toEqual(['job_1'])
-  expect(new Set(w.hires.filter((h) => h.payment).map((h) => h.payment)).size).toBe(1)
-  expect(signed).toHaveLength(1)
-})
-
-// A tab whose screen predates another tab's lost hire offered a fresh Pay, which
-// replaced the kept payment with a second one.
-test('a tab already open follows a hire another tab lost, and starts no second one', async ({ context, page }) => {
-  const w = world({ lose: { quote: 0, pay: 1 } })
-  wallet(w)
-  await toCheckout(page, w)
-  const other = await context.newPage()
-  await mock(other, w)
-  await other.goto('/checkout/lst_research')
-  const theirs = await cleared(other)
-  await expect(theirs).toBeEnabled()
-
-  await (await cleared(page)).click()
-  await expect(page.getByText('upstream request timeout')).toBeVisible()
-  const before = w.hires.length
-  await expect(other.locator('[data-unanswered]')).toContainText('for job job_1')
-  await expect(theirs).toHaveCount(0)
-  expect(w.hires).toHaveLength(before)
-  await other.getByRole('button', { name: 'Send the same payment again' }).click()
-  await expect(other).toHaveURL(/\/jobs\/job_1$/)
-  expect(opened(w).map((j) => j.id)).toEqual(['job_1'])
-  expect(new Set(w.hires.filter((h) => h.payment).map((h) => h.payment)).size).toBe(1)
-  // The platform answered in one tab; the other shows the form again.
-  await expect(page.locator('[data-unanswered]')).toHaveCount(0)
-  await expect(page.getByRole('textbox', { name: 'What do you need done?' })).toBeVisible()
-})
-
-/** Hold the first quote `ms` before the platform sees it: a hire in flight. */
-const slowQuote = (page: Page, ms: number) => {
-  let held = 0
-  return page.route(/\/v1\/marketplace\/jobs$/, async (route) => {
-    const body = JSON.parse(route.request().postData() ?? '{}') as { payment?: string }
-    if (route.request().method() !== 'POST' || body.payment || held++) return route.fallback()
-    await new Promise((r) => setTimeout(r, ms))
-    return route.fallback()
-  })
-}
-
-// Review round 4: another tab acted on a hire still in flight here — asked again, or
-// started over — and both tabs signed and paid.
-test('a hire in flight in one tab is taken up, not doubled, by another', async ({ context, page }) => {
-  for (const act of ['Ask again with the same terms', 'Start over'] as const) {
-    const w = world()
-    wallet(w)
-    await toCheckout(page, w, () => slowQuote(page, 4000))
-    const mine = signings(page)
-    const other = await context.newPage()
-    await mock(other, w)
-    await other.goto('/checkout/lst_research')
-    const theirs = signings(other)
-    const pay = await cleared(page)
-    await pay.click()
-
-    await expect(other.locator('[data-unanswered]')).toContainText('Nothing was signed.')
-    await other.getByRole('button', { name: act }).click()
-    if (act === 'Start over') await (await cleared(other)).click()
-    await expect(other).toHaveURL(/\/jobs\/job_\d+$/)
-    // The first tab's quote comes back to an attempt answered or dropped elsewhere: it signs nothing.
-    await expect(page.getByText('Another tab answered or dropped this hire while it was being sent here. Nothing more was sent.')).toBeVisible()
-    expect(opened(w)).toHaveLength(1)
-    expect(mine).toEqual([])
-    expect(theirs).toHaveLength(1)
-    await other.close()
-    await page.unrouteAll({ behavior: 'ignoreErrors' })
-    await page.evaluate(() => localStorage.clear())
-  }
-})
-
-// Review round 5: one tab's late answer to a hire another tab had since signed and
-// sent — lost, or a refusal — kept its stale copy over the payment, or forgot it.
-test('a late answer in one tab keeps the payment another tab signed with the same hire', async ({ context, page }) => {
-  for (const late of [504, 409]) {
-    const w = world({ lose: { quote: 0, pay: 1 } })
-    wallet(w)
-    let held = 0
-    await toCheckout(page, w, () =>
-      page.route(/\/v1\/marketplace\/jobs$/, async (route) => {
-        const body = JSON.parse(route.request().postData() ?? '{}') as { payment?: string }
-        if (route.request().method() !== 'POST' || body.payment || held++) return route.fallback()
-        await new Promise((r) => setTimeout(r, 5000))
-        return route.fulfill({ status: late, contentType: 'application/problem+json', body: JSON.stringify({ status: late, detail: `late ${late}` }) })
-      }),
-    )
-    const signed = signings(page)
-    const other = await context.newPage()
-    await mock(other, w)
-    await other.goto('/checkout/lst_research')
-    const theirs = signings(other)
-    await (await cleared(page)).click()
-
-    await other.getByRole('button', { name: 'Ask again with the same terms' }).click()
-    await expect(other.getByText('upstream request timeout')).toBeVisible()
-    await expect(other.locator('[data-unanswered]')).toContainText('for job job_1')
-
-    await expect(page.getByText(`late ${late}`)).toBeVisible({ timeout: 10_000 })
-    for (const tab of [page, other]) {
-      await expect(tab.locator('[data-unanswered]')).toContainText('for job job_1')
-      await expect(tab.getByRole('button', { name: 'Start over' })).toHaveCount(0)
-    }
-    await page.getByRole('button', { name: 'Send the same payment again' }).click()
-    await expect(page).toHaveURL(/\/jobs\/job_1$/)
-    expect(opened(w).map((j) => j.id)).toEqual(['job_1'])
-    expect([...signed, ...theirs]).toHaveLength(1)
-    await other.close()
-    await page.unrouteAll({ behavior: 'ignoreErrors' })
-    await page.evaluate(() => localStorage.clear())
-  }
+  // The clock lapses the quote: nothing was held, and the row is gone.
+  w.jobs.splice(0, 1)
+  await page.getByRole('button', { name: 'Send the same payment again' }).click()
+  await expect(page).toHaveURL(/\/jobs\/job_2$/)
+  expect(w.hires.map((h) => (h.payment ? 'pay' : 'quote'))).toEqual(['quote', 'pay', 'pay', 'quote', 'pay'])
+  expect(new Set(w.hires.map((h) => h.attempt)).size).toBe(1)
+  expect(signed).toHaveLength(2)
+  expect(signed[1]).not.toBe(signed[0])
+  expect(opened(w)).toHaveLength(1)
 })
 
 // Another browser keeps nothing of this one's attempt; the job it opened is the platform's.
@@ -529,8 +514,44 @@ test('the wallet signs nothing on another chain', async ({ page }) => {
   )
   const signed = signings(page)
   await (await cleared(page)).click()
-  await expect(page.getByText('The payment terms name no chain and asset this storefront can sign for. Nothing was signed.')).toBeVisible()
+  await expect(page.getByText('The payment terms name no network and token contract this storefront signs for. Nothing was signed.')).toBeVisible()
   await expect(page.locator('[data-unanswered]')).toHaveCount(0)
+  expect(signed).toEqual([])
+})
+
+// Red market-19: on the Hanzo L1 too, terms naming another token contract under the
+// USDC name were signed — an authorization for whatever that contract holds.
+test('the wallet signs for no token contract but the pinned one', async ({ page }) => {
+  const w = world()
+  wallet(w)
+  await toCheckout(page, w, () =>
+    page.route(/\/v1\/marketplace\/jobs$/, (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      const t = {
+        x402Version: 2,
+        resource: { url: 'job:job_1' },
+        accepts: [
+          {
+            scheme: 'exact',
+            network: 'eip155:36963',
+            amount: '250000000',
+            asset: '0x5425890298aed601595a70AB815c96711a31Bc65',
+            payTo: '0x209693Bc6afc0C5328bA36FaF03C514EF312287C',
+            maxTimeoutSeconds: 300,
+            extra: { assetTransferMethod: 'eip3009', name: 'USD Coin', version: '2' },
+          },
+        ],
+      }
+      return route.fulfill({
+        status: 402,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({ status: 402, detail: 'sign the payment', paymentRequired: Buffer.from(JSON.stringify(t)).toString('base64') }),
+      })
+    }),
+  )
+  const signed = signings(page)
+  await (await cleared(page)).click()
+  await expect(page.getByText('The payment terms name no network and token contract this storefront signs for. Nothing was signed.')).toBeVisible()
   expect(signed).toEqual([])
 })
 
@@ -550,7 +571,7 @@ test('the wallet signs no terms other than the job it cleared', async ({ page })
             scheme: 'exact',
             network: 'eip155:36963',
             amount: '25000000000',
-            asset: '0x5425890298aed601595a70AB815c96711a31Bc65',
+            asset: '',
             payTo: '0x000000000000000000000000000000000000dEaD',
             maxTimeoutSeconds: 300,
             extra: { assetTransferMethod: 'eip3009', name: 'USD Coin', version: '2' },

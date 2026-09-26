@@ -1,6 +1,8 @@
 // Jobs: the buyer's hires and the seller's inbox, and one job's lifecycle —
 // open → accepted → delivered → released, or disputed, declined, cancelled or
 // refunded. The amount is set aside in the buyer's wallet and paid at release.
+// The buyer also sees its hires in flight: quoted, or funding while the payment
+// is set aside, each with the attempt that made it.
 
 import { useState } from 'react'
 import { Text, XStack, YStack } from '@hanzo/ui'
@@ -8,7 +10,7 @@ import { Link, useParams } from 'react-router'
 
 import { web } from '~/lib/api'
 import { notServed } from '~/lib/http'
-import { acts, rateable, side, stages, words } from '~/lib/job'
+import { acts, inflight, rateable, side, stages, words } from '~/lib/job'
 import { actOnJob, job as getJob, jobs, rate, type Job, type JobAct } from '~/lib/market'
 import { usd } from '~/lib/money'
 import { useRead, useRun } from '~/lib/read'
@@ -17,8 +19,7 @@ import { SellNav } from '~/pages/setup'
 import { useSession } from '~/session'
 import { Act, Choice, Failed, Field, List, Mark, Nothing, Page, Panel, Pending, Refusal, Row, Section, Stages, Words } from '~/ui'
 
-const tone = (j: Job) =>
-  j.ending ? 'quiet' : j.status === 'released' ? 'up' : j.status === 'disputed' ? 'act' : j.status === 'open' || j.status === 'quoted' ? 'quiet' : 'moving'
+const tone = (j: Job) => (j.ending || j.status === 'open' || inflight(j) ? 'quiet' : j.status === 'released' ? 'up' : j.status === 'disputed' ? 'act' : 'moving')
 
 export function Jobs({ role }: { role: 'buyer' | 'seller' }) {
   return (
@@ -46,8 +47,8 @@ function JobList({ role }: { role: 'buyer' | 'seller' }) {
         <Pending what="Jobs are not live yet" says="api.hanzo.ai does not answer GET /v1/marketplace/jobs yet." />
       ) : (
         <List read={read} what="jobs" none={role === 'seller' ? 'No jobs yet.' : 'You have not hired anyone yet.'}>
-          {(rows) =>
-            rows.map((j) => (
+          {(rows) => {
+            const row = (j: Job) => (
               <Link key={j.id} to={`/jobs/${encodeURIComponent(j.id)}`} style={{ textDecoration: 'none' }}>
                 <Row>
                   <Text fontSize="$3" color="$ink" flex={1} numberOfLines={1}>
@@ -59,11 +60,29 @@ function JobList({ role }: { role: 'buyer' | 'seller' }) {
                   <Text fontSize="$2" color="$ink">
                     {usd(j.amount, j.currency)}
                   </Text>
+                  {inflight(j) && j.attempt ? (
+                    <Text fontSize="$1" color="$quiet" numberOfLines={1} maxW={140}>
+                      {`attempt ${j.attempt}`}
+                    </Text>
+                  ) : null}
                   <Mark tone={tone(j)} says={j.ending ?? j.status} />
                 </Row>
               </Link>
-            ))
-          }
+            )
+            const flying = rows.filter(inflight)
+            return (
+              <YStack gap="$5">
+                {flying.length ? (
+                  <YStack data-inflight="">
+                    <Section title="In flight" says="Hires the platform quoted, or is funding while the payment is set aside. Each opens its job once paid, or lapses within the hour and gives back whatever was set aside.">
+                      <YStack>{flying.map(row)}</YStack>
+                    </Section>
+                  </YStack>
+                ) : null}
+                <YStack>{rows.filter((j) => !inflight(j)).map(row)}</YStack>
+              </YStack>
+            )
+          }}
         </List>
       )}
     </Page>
@@ -152,10 +171,11 @@ function Shown({ j, onChange }: { j: Job; onChange: (j: Job) => void }) {
             </Text>
             <Fact k="Rail" v={j.escrow.rail === 'chain' ? 'Lux escrow' : 'x402, held until release'} />
             <Fact k="Network" v={j.escrow.network} />
-            <Fact k="Contract" v={j.escrow.contract} />
+            <Fact k="Contract" v={j.escrow.contract || 'none: the rail’s own ledger'} />
             {j.escrow.payTo ? <Fact k="Pays" v={j.escrow.payTo} /> : null}
             {j.escrow.txHash ? <Fact k="Paid" v={j.escrow.txHash} /> : null}
             {j.clearance ? <Fact k="Clearance" v={j.clearance} /> : null}
+            {j.attempt ? <Fact k="Attempt" v={j.attempt} /> : null}
             {j.deadline ? <Fact k="Deliver by" v={new Date(j.deadline * 1000).toISOString().slice(0, 10)} /> : null}
           </Panel>
           <Panel gap="$2">

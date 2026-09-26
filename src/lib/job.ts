@@ -1,10 +1,12 @@
 // A job's lifecycle, as cloud runs it (apps/marketplace/jobs.go):
 //
-//   quoted ─pay─▶ open ─accept─▶ accepted ─deliver─▶ delivered ─release─▶ released
-//                  │ cancel, decline   │ refund, dispute   │ refund, dispute
-//                  ▼                   ▼                   ▼
-//        cancelled / declined      refunded ◀─refund── disputed ─release─▶ released
+//   quoted ─pay─▶ funding ─held─▶ open ─accept─▶ accepted ─deliver─▶ delivered ─release─▶ released
+//                                  │ cancel, decline   │ refund, dispute   │ refund, dispute
+//                                  ▼                   ▼                   ▼
+//                        cancelled / declined      refunded ◀─refund── disputed ─release─▶ released
 //
+// A quote, and a funding the rail never answered, lapse after an hour, and
+// whatever the funding set aside goes back first. Only the buyer sees either.
 // The amount is set aside in the buyer's wallet when the job opens and paid to
 // the seller once, at release; every other ending returns it. What was drawn and
 // what can be done next come from the job itself — its history for the path it
@@ -20,8 +22,12 @@ const PATH: JobStatus[] = ['open', 'accepted', 'delivered', 'released']
 /** Where a job ends unpaid. */
 const UNPAID = new Set<JobStatus>(['declined', 'cancelled', 'refunded'])
 
+/** A hire in flight: quoted, or its payment presented and being set aside. It has not opened. */
+export const inflight = (job: Pick<Job, 'status'>): boolean => job.status === 'quoted' || job.status === 'funding'
+
 export const WORDS: Record<JobStatus, string> = {
   quoted: 'Quoted — not paid yet; the quote lapses after an hour',
+  funding: 'Funding — the payment is being set aside; the job opens once it is, or lapses within the hour and gives back whatever was set aside',
   open: 'Open — the amount is set aside in the buyer’s wallet, waiting for the seller',
   accepted: 'Accepted — the seller is working',
   delivered: 'Delivered — waiting for the buyer to release',
@@ -43,14 +49,14 @@ const label = (s: JobStatus) => s[0].toUpperCase() + s.slice(1)
 /** The steps drawn for a job: the ones it took, then the ones still ahead of it. */
 export function stages(job: Pick<Job, 'status' | 'ending' | 'history'>): { status: JobStatus; label: string; stage: Stage }[] {
   const took: JobStatus[] = []
-  for (const h of job.history ?? []) if (h.status !== 'quoted' && !took.includes(h.status)) took.push(h.status)
+  for (const h of job.history ?? []) if (!inflight(h) && !took.includes(h.status)) took.push(h.status)
   // A job read without its history went the plain way to where it stands.
   if (!took.length && PATH.includes(job.status)) took.push(...PATH.slice(0, PATH.indexOf(job.status)))
-  if (job.status !== 'quoted' && !took.includes(job.status)) took.push(job.status)
+  if (!inflight(job) && !took.includes(job.status)) took.push(job.status)
   const now = job.ending ?? job.status
   const over = now === 'released' || UNPAID.has(now)
   const ahead = over || now === 'disputed' ? [] : PATH.filter((s) => !took.includes(s) && s !== job.ending)
-  const drawn = job.status === 'quoted' ? (['quoted', ...PATH] as JobStatus[]) : [...took, ...(job.ending ? [job.ending] : []), ...ahead]
+  const drawn = inflight(job) ? [job.status, ...PATH] : [...took, ...(job.ending ? [job.ending] : []), ...ahead]
   return drawn.map((s) => ({
     status: s,
     label: label(s),
