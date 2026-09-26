@@ -1,12 +1,17 @@
 // One read: its answer, its refusal, and a way to ask again. Re-runs when `deps`
 // change — including the org, so a switch of tenant re-reads every screen.
+//
+// An answer belongs to the inputs that asked for it. When the inputs change, the
+// previous answer is gone at once (never shown for the new ones), and a refusal
+// leaves no answer behind: a screen never reads one org's record as another's,
+// or a clearance for one amount as the clearance for another.
 
 import { useCallback, useEffect, useState } from 'react'
 
 import { Refusal, why } from '~/lib/http'
 
 export interface Read<T> {
-  /** Null until the first answer. */
+  /** The answer for the current inputs; null while they are asked, or when they were refused. */
   it: T | null
   /** The refusal's sentence, or null. */
   failed: string | null
@@ -16,45 +21,50 @@ export interface Read<T> {
   again: () => void
 }
 
+interface Answer<T> {
+  /** The read this answers: `run` for the inputs that asked. */
+  of: unknown
+  it: T | null
+  failed: string | null
+  status: number | null
+}
+
 export function useRead<T>(get: (() => Promise<T>) | null, deps: unknown[]): Read<T> {
-  const [it, setIt] = useState<T | null>(null)
-  const [failed, setFailed] = useState<string | null>(null)
-  const [status, setStatus] = useState<number | null>(null)
-  const [loading, setLoading] = useState(Boolean(get))
+  const [answer, setAnswer] = useState<Answer<T> | null>(null)
+  const [asking, setAsking] = useState(false)
   const [turn, setTurn] = useState(0)
   const run = useCallback(get ?? (() => Promise.resolve(null as T)), deps)
   const on = Boolean(get)
 
   useEffect(() => {
+    if (!on) return
     let live = true
-    if (!on) {
-      setLoading(false)
-      return () => {
-        live = false
-      }
-    }
-    setLoading(true)
-    setFailed(null)
-    setStatus(null)
+    setAsking(true)
     run()
       .then((got) => {
-        if (!live) return
-        setIt(got)
+        if (live) setAnswer({ of: run, it: got, failed: null, status: null })
       })
       .catch((e: unknown) => {
-        if (!live) return
-        setFailed(why(e))
-        setStatus(e instanceof Refusal ? e.status : null)
+        if (live) setAnswer({ of: run, it: null, failed: why(e), status: e instanceof Refusal ? e.status : null })
       })
       .finally(() => {
-        if (live) setLoading(false)
+        if (live) setAsking(false)
       })
     return () => {
       live = false
     }
   }, [run, turn, on])
 
-  return { it, failed, status, loading, again: () => setTurn((t) => t + 1) }
+  const again = useCallback(() => setTurn((t) => t + 1), [])
+  // Only an answer to these inputs counts; anything older is not theirs.
+  const mine = on && answer?.of === run ? answer : null
+  return {
+    it: mine?.it ?? null,
+    failed: mine?.failed ?? null,
+    status: mine?.status ?? null,
+    loading: on && (asking || mine === null),
+    again,
+  }
 }
 
 /** A write in flight: one at a time, and the platform's refusal if it said no. */
