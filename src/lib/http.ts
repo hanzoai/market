@@ -134,7 +134,8 @@ export const unsigned = (e: unknown): boolean => e instanceof Refusal && needsSe
  * The failure left unknown what the platform did: no answer came back, or the
  * platform or its gateway failed (5xx), timed the request out (408) or throttled
  * it (429). A write that failed this way may have taken effect, so it is sent
- * again exactly as it was; any other refusal is the platform's answer.
+ * again exactly as it was; any other refusal is the platform's answer — 501
+ * included, which says the operation is not served at all.
  */
 export const lost = (e: unknown): boolean =>
-  e instanceof Silence || (e instanceof Refusal && (e.status >= 500 || e.status === 408 || e.status === 429))
+  e instanceof Silence || (e instanceof Refusal && ((e.status >= 500 && !notServed(e.status)) || e.status === 408 || e.status === 429))

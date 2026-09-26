@@ -129,5 +129,6 @@ describe('http', () => {
     expect(lost(e)).toBe(true)
     expect(lost(new Refusal(503, 'down'))).toBe(true)
     expect(lost(new Refusal(404, 'no route'))).toBe(false)
+    expect(lost(new Refusal(501, 'not implemented'))).toBe(false)
   })
 })
