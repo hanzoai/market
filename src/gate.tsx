@@ -1,7 +1,9 @@
 // A screen that acts as an org: it needs a session. Signed out, it says why and
-// offers the one way in.
+// offers the one way in. Signed in, the screen belongs to the org it acts as: a
+// switch of org starts it afresh, so nothing one org typed, opened or was answered
+// (a draft, a verification link, a payment in flight) is shown as another's.
 
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { Text, YStack } from '@hanzo/ui'
 
 import { useSession } from '~/session'
@@ -25,5 +27,5 @@ export function Gate({ why, children }: { why: string; children: ReactNode }) {
       </YStack>
     )
   }
-  return <>{children}</>
+  return <Fragment key={session.org ?? ''}>{children}</Fragment>
 }

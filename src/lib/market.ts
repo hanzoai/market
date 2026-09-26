@@ -6,8 +6,12 @@
 // An operation api.hanzo.ai does not route yet answers 404, and the page that
 // asked says "not live yet" rather than inventing an answer.
 
+import { hashMessage } from 'viem'
+
 import { blob, Refusal, request, text } from '~/lib/http'
-import { digest, nonce, payable, payment, terms, type Authorization } from '~/lib/x402'
+import { held } from '~/lib/job'
+import { dollars } from '~/lib/money'
+import { digest, nonce, payment, terms, vet, type Authorization } from '~/lib/x402'
 
 /** What a listing sells. A tool is the platform's, sold per call; everything else is hired for a job. */
 export type Kind = 'agent' | 'persona' | 'app' | 'skill' | 'mcp' | 'tool'
@@ -185,37 +189,69 @@ export interface Payer {
 export const TAIL = (3 + 14 + 1) * 86_400
 
 /**
- * POST /v1/marketplace/jobs, both steps. Sent without a payment, cloud clears the
- * terms and answers 402 with the x402 terms to sign for the job; the buyer's
- * wallet signs them on the platform, and the same request goes again with the
- * signed payment, which opens the job (201) with the amount set aside in that
- * wallet. The authorization stays valid through the deadline, the review window,
- * a ruling on a dispute and a day for the clock, as cloud requires.
+ * One hire, from its first ask to the job it opens. It keeps what it sent, so
+ * asking again after an answer that never came back is the same request: the same
+ * terms and deadline, which cloud answers with the quote it already made (within
+ * the hour), and once signed the same payment, which cloud answers with the job it
+ * opened (jobs.go fund: "send the same payment again"). Only a new attempt quotes,
+ * signs and opens anew.
  */
-export async function hire(req: HireReq, from: Payer): Promise<Job> {
+export interface Attempt {
+  req: HireReq
+  from: Payer
+  /** The payment the wallet signed for the quoted job, and what it pays. */
+  signed?: { job: string; payment: string; amount: string; payTo: string }
+}
+
+/**
+ * POST /v1/marketplace/jobs, both steps. Sent without a payment, cloud clears the
+ * terms and answers 402 with the x402 terms to sign for the job; this page checks
+ * them against the job the buyer cleared (x402 `vet`), the buyer's wallet signs
+ * them on the platform, and the same request goes again with the signed payment,
+ * which opens the job (201) with the amount set aside in that wallet. The
+ * authorization stays valid through the deadline, the review window, a ruling on
+ * a dispute and a day for the clock, as cloud requires.
+ *
+ * The signed payment is kept on `a` before it is sent, so a retry of an attempt
+ * whose answer was lost re-sends it rather than signing another.
+ */
+export async function hire(a: Attempt): Promise<Job> {
+  const { req, from } = a
   const body = { listing: req.listing, brief: req.brief, amount: req.amount, category: req.category, performed: req.performed, deadline: req.deadline, wallet: req.wallet }
-  let required
-  try {
-    return await request<Job>({ method: 'POST', path: '/v1/marketplace/jobs', body })
-  } catch (e) {
-    if (!(e instanceof Refusal) || e.status !== 402) throw e
-    required = terms(e.problem)
-    if (!required) throw e
+  if (!a.signed) {
+    let required
+    try {
+      return await request<Job>({ method: 'POST', path: '/v1/marketplace/jobs', body })
+    } catch (e) {
+      if (!(e instanceof Refusal) || e.status !== 402) throw e
+      required = terms(e.problem)
+      if (!required) throw e
+    }
+    const { job, accepted } = vet(required, req.amount, from.address)
+    const now = Math.floor(Date.now() / 1000)
+    const auth: Authorization = {
+      from: from.address,
+      to: accepted.payTo,
+      value: accepted.amount,
+      validAfter: String(now - 600),
+      validBefore: String(req.deadline + TAIL + 3600),
+      nonce: nonce(),
+    }
+    const signed = await sign(from.id, digest(accepted, auth))
+    if (signed.address.toLowerCase() !== from.address.toLowerCase()) throw new Error(`Wallet ${from.id} signed as ${signed.address}, not ${from.address}.`)
+    a.signed = { job, payment: payment(required, accepted, auth, signed.signature), amount: req.amount, payTo: accepted.payTo }
   }
-  const accepted = payable(required)
-  if (!accepted) throw new Error('The payment terms name no chain this storefront can sign for.')
-  const now = Math.floor(Date.now() / 1000)
-  const a: Authorization = {
-    from: from.address,
-    to: accepted.payTo,
-    value: accepted.amount,
-    validAfter: String(now - 600),
-    validBefore: String(req.deadline + TAIL + 3600),
-    nonce: nonce(),
-  }
-  const signed = await sign(from.id, digest(accepted, a))
-  if (signed.address.toLowerCase() !== from.address.toLowerCase()) throw new Error(`Wallet ${from.id} signed as ${signed.address}, not ${from.address}.`)
-  return request<Job>({ method: 'POST', path: '/v1/marketplace/jobs', body: { ...body, payment: payment(required, accepted, a, signed.signature) } })
+  return request<Job>({ method: 'POST', path: '/v1/marketplace/jobs', body: { ...body, payment: a.signed.payment } })
+}
+
+/**
+ * A job the buyer's org already has under way for exactly these terms — this
+ * listing, brief and amount, its money still set aside — or null. Asked before a
+ * new quote: an earlier attempt whose answer never came back may have opened it.
+ */
+export async function underway(req: Pick<HireReq, 'listing' | 'brief' | 'amount'>): Promise<Job | null> {
+  const { jobs: mine } = await jobs('buyer')
+  return mine.find((j) => j.listing === req.listing && j.brief === req.brief && dollars(j.amount) === req.amount && held(j)) ?? null
 }
 
 export const jobs = (role: 'buyer' | 'seller') =>
@@ -262,18 +298,52 @@ export interface Onboarding {
 
 export const seller = (year?: number) => request<Onboarding>({ path: '/v1/marketplace/seller', query: { year } })
 
+/** What cloud asks a payout wallet to sign (apps/marketplace seller.go challengePayout). */
+export interface Challenge {
+  wallet: string
+  address: string
+  message: string
+  digest: string
+  expires: number
+}
+
+const PROOF = 'Hanzo marketplace payout wallet'
+
 /**
- * Bind the org's payout wallet: cloud issues a challenge naming the wallet's
- * address, the wallet signs its digest on the platform, and cloud checks the
- * signature is that address's (POST /v1/marketplace/seller/payout[/verify]).
+ * Why a payout challenge is not one for `org`'s `wallet` to sign, or null when it
+ * is. Its digest must be the EIP-191 hash of its message — which no transfer
+ * authorization or transaction hash can be — and the message must be cloud's
+ * proof naming exactly this org, this wallet and its address.
  */
-export async function bindPayout(wallet: string): Promise<Onboarding['payout']> {
-  const c = await request<{ wallet: string; address: string; message: string; digest: string; expires: number }>({
-    method: 'POST',
-    path: '/v1/marketplace/seller/payout',
-    body: { wallet },
-  })
-  const signed = await sign(wallet, c.digest)
+export function unfit(c: Challenge, org: string, wallet: { id: string; address: string }): string | null {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(c.digest) || hashMessage(c.message) !== c.digest.toLowerCase()) return 'The challenge’s digest is not the hash of its message.'
+  const lines = c.message.split('\n')
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+  const fits =
+    lines.length === 6 &&
+    lines[0] === PROOF &&
+    lines[1] === `org: ${org}` &&
+    lines[2] === `wallet: ${wallet.id}` &&
+    same(lines[3], `address: ${wallet.address}`) &&
+    /^nonce: \S+$/.test(lines[4]) &&
+    /^expires: \d+$/.test(lines[5])
+  if (!fits) return `The challenge is not a proof of ${wallet.id} for ${org}.`
+  if (c.wallet !== wallet.id || !same(c.address, wallet.address)) return `The challenge names ${c.wallet} at ${c.address}, not ${wallet.id} at ${wallet.address}.`
+  return null
+}
+
+/**
+ * Bind the org's payout wallet: cloud issues a challenge naming the org, the
+ * wallet and its address; this page checks it (`unfit`), the wallet signs its
+ * digest on the platform, and cloud checks the signature is that address's
+ * (POST /v1/marketplace/seller/payout[/verify]).
+ */
+export async function bindPayout(org: string, wallet: { id: string; address: string }): Promise<Onboarding['payout']> {
+  const c = await request<Challenge>({ method: 'POST', path: '/v1/marketplace/seller/payout', body: { wallet: wallet.id } })
+  const why = unfit(c, org, wallet)
+  if (why) throw new Error(`${why} Nothing was signed.`)
+  const signed = await sign(wallet.id, c.digest)
+  if (signed.address.toLowerCase() !== wallet.address.toLowerCase()) throw new Error(`Wallet ${wallet.id} signed as ${signed.address}, not ${wallet.address}.`)
   return request<Onboarding['payout']>({ method: 'POST', path: '/v1/marketplace/seller/payout/verify', body: { signature: signed.signature } })
 }
 

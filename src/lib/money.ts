@@ -62,6 +62,19 @@ export function dollars(amount: string): string | null {
   return `${c / 100n}.${String(c % 100n).padStart(2, '0')}`
 }
 
+/** An amount in an asset's atomic units ("250.00" at 6 places is 250000000n), or null when it is not exact at that scale. */
+export function atomic(amount: string, places: number): bigint | null {
+  if (!valid(amount) || places < 0 || places > SCALE) return null
+  const step = 10n ** BigInt(SCALE - places)
+  const n = units(amount)
+  return n % step === 0n ? n / step : null
+}
+
+/** Atomic units at `places` back to an exact decimal. */
+export function scaled(n: bigint, places: number): string {
+  return decimal(n * 10n ** BigInt(SCALE - places))
+}
+
 /** A withholding rate (0.24) as words. */
 export function percent(rate: number): string {
   return `${Math.round(rate * 10000) / 100}%`

@@ -1,7 +1,7 @@
 import { expect, test, type Route } from '@playwright/test'
 
-import { signIn } from './flow'
-import { mock, NOW, world } from './mock'
+import { signIn, twoOrgs } from './flow'
+import { mock, NOW, wallet, world } from './mock'
 
 const job = (id: string, over: Record<string, unknown>) => ({
   id,
@@ -147,25 +147,7 @@ test('switching org never shows one org’s standing as another’s', async ({ p
     },
   })
   await mock(page, w)
-  const b64url = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url')
-  const both = `${b64url({ alg: 'RS256', typ: 'JWT' })}.${b64url({
-    sub: 'acme/ada',
-    iss: 'https://hanzo.id',
-    aud: 'hanzo-market',
-    orgs: [
-      { org: 'acme', role: 'admin' },
-      { org: 'globex', role: 'admin' },
-    ],
-    exp: Math.floor(Date.now() / 1000) + 3600,
-  })}.sig`
-  await page.route(/hanzo\.id\/v1\/iam\/oauth\/token/, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      headers: { 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ access_token: both, refresh_token: 'r', id_token: both, token_type: 'Bearer', expires_in: 3600 }),
-    }),
-  )
+  await twoOrgs(page)
   // globex has no principal and no tax form: the platform answers 404 for it.
   const perOrg = (route: Route) =>
     route.request().headers()['x-org-id'] === 'globex'
@@ -186,4 +168,124 @@ test('switching org never shows one org’s standing as another’s', async ({ p
   await expect(page.getByText('W-9 · certified · valid')).toHaveCount(0)
   await expect(page.getByText('Identity: verified')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Sign and certify' })).toHaveCount(0)
+})
+
+// Red market-16: the verification links opened for one org stayed on screen after
+// switching to another (and so did a W-9 draft typed for it).
+test('switching org leaves nothing opened or typed for the last org on screen', async ({ page }) => {
+  await mock(page, world())
+  await twoOrgs(page)
+  await page.goto('/sell')
+  await signIn(page, '/sell')
+  await page.getByRole('button', { name: 'Verify your organization' }).click()
+  await expect(page.locator('[data-verify]')).toHaveCount(1)
+  const name = page.getByRole('textbox', { name: 'Legal name (as on your tax return)' })
+  await name.fill('Acme Corporation')
+  await page.getByRole('combobox', { name: 'Acting as' }).selectOption('globex')
+  await expect(page.getByRole('combobox', { name: 'Acting as' })).toHaveValue('globex')
+  await expect(page.locator('[data-verify]')).toHaveCount(0)
+  await expect(name).toHaveValue('')
+})
+
+// Red market-13: requests acted as the org in shared storage, not the one the tab
+// showed — so after a switch in another tab, this one certified globex's W-9 while
+// showing acme's.
+test('a tab follows an org chosen in another tab, and acts only as the org it shows', async ({ context }) => {
+  const w = world({
+    tax: {
+      form: 'w9',
+      name: 'Acme Corporation',
+      address: { line1: '1 Market St', city: 'SF', state: 'CA', zip: '94105' },
+      tin: '**-***6789',
+      certification: { status: 'none' },
+      valid: false,
+      version: 1,
+      updatedAt: 0,
+    },
+  })
+  const one = await context.newPage()
+  await mock(one, w)
+  await twoOrgs(one)
+  const certified: string[] = []
+  await one.route(/\/v1\/tax\/profile\/certify$/, (route) => {
+    certified.push(route.request().headers()['x-org-id'] ?? '')
+    return route.fallback()
+  })
+  await one.goto('/sell')
+  await signIn(one, '/sell')
+  const acting = one.getByRole('combobox', { name: 'Acting as' })
+  await expect(acting).toHaveValue('acme')
+
+  const two = await context.newPage()
+  await mock(two, w)
+  await twoOrgs(two)
+  await two.goto('/sell')
+  await two.getByRole('combobox', { name: 'Acting as' }).selectOption('globex')
+
+  await one.bringToFront()
+  await expect(acting).toHaveValue('globex')
+  await one.getByRole('button', { name: 'Sign and certify' }).click()
+  await expect.poll(() => certified).toEqual(['globex'])
+})
+
+// Red market-15: the payout proof signed whatever digest the challenge carried.
+test('the payout proof signs only cloud’s challenge for this wallet and org', async ({ page }) => {
+  const w = world()
+  wallet(w)
+  await mock(page, w)
+  await page.route(/\/v1\/marketplace\/seller\/payout$/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        wallet: 'wal_acme',
+        address: w.wallets[0].address,
+        message: 'Hanzo marketplace payout wallet\norg: acme',
+        digest: `0x${'ab'.repeat(32)}`,
+        expires: NOW + 900,
+      }),
+    }),
+  )
+  const signed: string[] = []
+  page.on('request', (r) => {
+    if (/\/v1\/wallet\/[^/]+\/sign$/.test(new URL(r.url()).pathname)) signed.push(r.url())
+  })
+  await page.goto('/sell')
+  await signIn(page, '/sell')
+  await page.getByRole('button', { name: 'Use Treasury for payouts' }).click()
+  await expect(page.getByText('The challenge’s digest is not the hash of its message. Nothing was signed.')).toBeVisible()
+  expect(signed).toEqual([])
+  expect(w.seller?.payout).toMatchObject({ bound: false })
+})
+
+// Red market-14: cloud answers the newest 1000 receipts with no total; their sum was
+// shown as the year's per-call earnings.
+test('a sum over the newest 1000 receipts reads as a floor', async ({ page }) => {
+  const w = world()
+  await mock(page, w)
+  await page.route(/\/v1\/x402\/settlements/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        settlements: Array.from({ length: 1000 }, (_, i) => ({
+          id: `x402_${i}`,
+          resource: i ? 'tool:geocode' : 'job:job_9',
+          payer: 'globex',
+          payee: '0xacme',
+          payeeOrg: 'acme',
+          amount: i ? '0.0025' : '40',
+          network: 'eip155:36963',
+          settledVia: 'ledger',
+          settledAt: NOW,
+        })),
+      }),
+    }),
+  )
+  await page.goto('/sell/earnings')
+  await signIn(page, '/sell/earnings')
+  await expect(page.getByText('at least $2.4975', { exact: true })).toBeVisible()
+  await expect(page.getByText('at least $40.00', { exact: true })).toBeVisible()
+  await expect(page.locator('[data-cut]')).toHaveText('The newest 1,000 payments. The platform lists no more than that, so the figures above from them are floors.')
+  await expect(page.getByText('$120.005', { exact: true })).toBeVisible()
 })

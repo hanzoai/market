@@ -1,7 +1,8 @@
 // Checkout. A platform tool is installed and paid per call over x402. Everything a
 // seller lists is hired for a job: clearance first, in plain words, then the
 // buyer's wallet signs an x402 payment for exactly that job, which cloud sets
-// aside until the buyer releases it.
+// aside until the buyer releases it. A payment whose answer never came back is
+// sent again as it was, never signed anew, so one hire opens one job.
 
 import { useEffect, useState } from 'react'
 import { Text, XStack, YStack } from '@hanzo/ui'
@@ -9,8 +10,9 @@ import { useNavigate, useParams } from 'react-router'
 
 import { sellerName } from '~/lib/catalog'
 import { answers, asksWhere, facts, headline, net, netOnly, payable, todos, withholding } from '~/lib/clearance'
-import { notServed } from '~/lib/http'
-import { clearance, hire, install, shopListing, wallets, type ClearIn, type Clearance, type ShopListing } from '~/lib/market'
+import { lost as unanswered, notServed } from '~/lib/http'
+import { words } from '~/lib/job'
+import { clearance, hire, install, shopListing, underway, wallets, type Attempt, type ClearIn, type Clearance, type Job, type ShopListing } from '~/lib/market'
 import { dollars, each, free, usd } from '~/lib/money'
 import { useRead, useRun, type Read } from '~/lib/read'
 import { Gate } from '~/gate'
@@ -103,6 +105,11 @@ const alpha2 = (v: string) => (/^[A-Za-z]{2}$/.test(v.trim()) ? v.trim().toUpper
  * signed. Payment waits on a finished clearance of exactly what it pays, which
  * the platform allowed in full; cloud clears the job again when it is quoted,
  * funded and released.
+ *
+ * One hire is one attempt. If its answer never comes back, the attempt is kept
+ * and sent again as it was — the same terms, deadline and signed payment — which
+ * cloud answers with the job it opened. A new attempt first asks whether the org
+ * already has a job under way for exactly these terms.
  */
 function Hire({ listing }: { listing: ShopListing }) {
   const go = useNavigate()
@@ -116,6 +123,12 @@ function Hire({ listing }: { listing: ShopListing }) {
   const [asked, setAsked] = useState<ClearIn | null>(null)
   const check = useRead(asked ? () => clearance(asked) : null, [asked?.payee, asked?.amount, asked?.performed])
   const { busy, failed, status, run } = useRun()
+  // The attempt whose answer never came back: the next press sends it again, unchanged.
+  const [lost, setLost] = useState<Attempt | null>(null)
+  // A job already under way for these terms, found before a new quote.
+  const [already, setAlready] = useState<Job | null>(null)
+  // The buyer saw that job and hires again anyway.
+  const [again, setAgain] = useState(false)
 
   const list = mine.it?.wallets ?? []
   const payer = list.find((w) => w.id === wallet) ?? list[0] ?? null
@@ -128,6 +141,7 @@ function Hire({ listing }: { listing: ShopListing }) {
   const decided = current && !check.loading && check.it && answers(check.it, want) ? check.it : null
   const cleared = decided !== null && payable(decided)
   const ready = cleared && brief.trim().length > 0 && payer !== null && !busy
+  const dup = already && already.brief === brief.trim() && dollars(already.amount) === gross ? already : null
 
   // Asked once where the work is performed, the question stays on the form.
   const [askWhere, setAskWhere] = useState(false)
@@ -135,12 +149,43 @@ function Hire({ listing }: { listing: ShopListing }) {
     if (asksWhere(decided)) setAskWhere(true)
   }, [decided])
 
+  const pay = () =>
+    void run(async () => {
+      let a = lost
+      if (!a) {
+        if (!want || !payer) return
+        const req = {
+          listing: listing.id,
+          brief: brief.trim(),
+          amount: want.amount,
+          category: 'service' as const,
+          performed: want.performed,
+          deadline: Math.floor(Date.now() / 1000) + Number(days) * 86_400,
+          wallet: payer.id,
+        }
+        if (!again) {
+          const had = await underway(req)
+          if (had) return setAlready(had)
+        }
+        a = { req, from: { id: payer.id, address: payer.address } }
+      }
+      try {
+        const opened = await hire(a)
+        setLost(null)
+        await go(`/jobs/${encodeURIComponent(opened.id)}`)
+      } catch (e) {
+        // Unanswered: keep the attempt, with the payment it signed. Answered: it is over.
+        setLost(unanswered(e) ? { ...a } : null)
+        throw e
+      }
+    })
+
   return (
     <Page eyebrow="Hire" title={listing.title} says={`Sold by ${sellerName(listing.seller.org)} · ${free(listing.price) ? 'Price agreed per job' : each(listing.price, listing.kind)}`}>
       <Stages
         of={[
-          { label: '1 Clearance', stage: cleared ? 'done' : 'current' },
-          { label: '2 Pay', stage: cleared ? 'current' : 'todo' },
+          { label: '1 Clearance', stage: cleared || lost ? 'done' : 'current' },
+          { label: '2 Pay', stage: cleared || lost ? 'current' : 'todo' },
           { label: '3 Job opened', stage: 'todo' },
         ]}
       />
@@ -173,29 +218,35 @@ function Hire({ listing }: { listing: ShopListing }) {
         )}
       </Section>
 
-      <Section title="Payment" says="Your wallet signs an x402 payment for exactly this job; the platform holds the signature, not the money.">
+      <Section title="Payment" says="Your wallet signs an x402 payment for exactly the amount cleared, to the seller, for this job, and nothing else; the platform holds the signature, not the money.">
         <Panel>
-          <Payer read={mine} value={payer?.id ?? ''} set={setWallet} />
+          {lost ? (
+            <Unanswered attempt={lost} />
+          ) : (
+            <Payer read={mine} value={payer?.id ?? ''} set={setWallet} />
+          )}
+          {dup && !lost ? (
+            <YStack gap="$2" data-underway="">
+              <Text fontSize="$2" color="$ink">
+                {`Your organization already has job ${dup.id} under way for exactly this: ${usd(dup.amount, dup.currency)}, ${words(dup).split(' — ')[0].toLowerCase()}. Hiring again opens a second job and sets the amount aside twice.`}
+              </Text>
+              <XStack gap="$2" flexWrap="wrap">
+                <Go to={`/jobs/${encodeURIComponent(dup.id)}`}>{`Open ${dup.id}`}</Go>
+                <Act onPress={() => (setAgain(true), setAlready(null))}>Hire again anyway</Act>
+              </XStack>
+            </YStack>
+          ) : null}
           <XStack items="center" gap="$3" flexWrap="wrap">
-            <Act
-              loud
-              disabled={!ready}
-              onPress={() =>
-                void run(async () => {
-                  if (!want || !payer) return
-                  const deadline = Math.floor(Date.now() / 1000) + Number(days) * 86_400
-                  const opened = await hire(
-                    { listing: listing.id, brief: brief.trim(), amount: want.amount, category: 'service', performed: want.performed, deadline, wallet: payer.id },
-                    { id: payer.id, address: payer.address },
-                  )
-                  await go(`/jobs/${encodeURIComponent(opened.id)}`)
-                })
-              }
-            >
-              {gross ? `Pay ${usd(gross)} and open the job` : 'Pay and open the job'}
+            <Act loud disabled={lost ? busy : !ready || dup !== null} onPress={pay}>
+              {lost ? (lost.signed ? 'Send the same payment again' : 'Ask again with the same terms') : gross ? `Pay ${usd(gross)} and open the job` : 'Pay and open the job'}
             </Act>
+            {lost ? (
+              <Act disabled={busy} onPress={() => setLost(null)}>
+                Start over
+              </Act>
+            ) : null}
           </XStack>
-          {!cleared ? (
+          {!cleared && !lost ? (
             <Text fontSize="$2" color="$quiet">
               Payment waits on a clearance of this amount.
             </Text>
@@ -208,6 +259,21 @@ function Hire({ listing }: { listing: ShopListing }) {
         </Panel>
       </Section>
     </Page>
+  )
+}
+
+/** An attempt whose answer never came back: what it holds, and why sending it again is safe. */
+function Unanswered({ attempt }: { attempt: Attempt }) {
+  const s = attempt.signed
+  return (
+    <YStack gap="$2" data-unanswered="">
+      <Mark tone="act" says="The platform’s answer never came back" />
+      <Text fontSize="$2" color="$soft">
+        {s
+          ? `Your wallet signed ${usd(s.amount)} in USD Coin to ${s.payTo} for job ${s.job}. The platform may already have opened it. Sending the same payment again is safe: it answers with the job it opened, or opens it once.`
+          : `Nothing was signed yet. Asking again with the same terms and deadline (${usd(attempt.req.amount)}) gets the same quote, not a second one.`}
+      </Text>
+    </YStack>
   )
 }
 

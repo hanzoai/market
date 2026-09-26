@@ -1,4 +1,4 @@
-import { cents, dollars, each, free, percent, sum, usd, valid } from '~/lib/money'
+import { atomic, cents, dollars, each, free, percent, scaled, sum, usd, valid } from '~/lib/money'
 
 describe('money', () => {
   it('accepts exact decimals only', () => {
@@ -52,5 +52,16 @@ describe('money', () => {
     expect(dollars('0')).toBeNull()
     expect(dollars('')).toBeNull()
     expect(dollars('-3')).toBeNull()
+  })
+
+  it('converts an amount to an asset’s atomic units exactly, or not at all', () => {
+    expect(atomic('250.00', 6)).toBe(250_000_000n)
+    expect(atomic('0.0025', 6)).toBe(2500n)
+    expect(atomic('0.0000001', 6)).toBeNull()
+    expect(atomic('1', 18)).toBe(10n ** 18n)
+    expect(atomic('1', 19)).toBeNull()
+    expect(atomic('nope', 6)).toBeNull()
+    expect(scaled(25_000_000_000n, 6)).toBe('25000')
+    expect(scaled(2500n, 6)).toBe('0.0025')
   })
 })

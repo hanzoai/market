@@ -4,13 +4,17 @@
 // auth — it reads the session and names the org. Signed in is the SDK's word
 // (a token that is valid or was refreshed), withdrawn the moment the gateway
 // refuses it (401): a token merely left in storage is not a session.
+//
+// The org is the one this tab shows, and every request acts as exactly that org.
+// A switch made in another tab is followed here: the screen re-keys to the new
+// org (see Gate) before anything acts as it.
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
 import { IamProvider, useIam } from '@hanzo/iam/react'
 
 import { iam } from '~/lib/api'
 import { LAPSED } from '~/lib/http'
-import { org as chosenOrg, orgs as tokenOrgs, own, subject, work } from '~/lib/token'
+import { choice, org as chosenOrg, orgs as tokenOrgs, own, show, subject, work } from '~/lib/token'
 
 export interface Session {
   loading: boolean
@@ -57,6 +61,18 @@ function Bind({ children }: { children: ReactNode }) {
     own(subject())
     setPicked(chosenOrg())
   }, [isLoading, isAuthenticated])
+
+  // Another tab chose another org: this one follows, rather than show one org and act as another.
+  useEffect(() => {
+    const follow = (e: StorageEvent) => {
+      if (choice(e.key)) setPicked(chosenOrg())
+    }
+    window.addEventListener('storage', follow)
+    return () => window.removeEventListener('storage', follow)
+  }, [])
+
+  // Before any screen's reads run (they are passive effects), requests act as the org shown.
+  useLayoutEffect(() => show(picked), [picked])
 
   const session = useMemo<Session>(() => {
     const u = (user ?? null) as { displayName?: string; name?: string; email?: string } | null

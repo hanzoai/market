@@ -1,10 +1,10 @@
 // One way to reach api.hanzo.ai. Every read and write in this storefront goes
 // through `request`, which attaches the IAM bearer and the chosen org when there
 // is a session, and turns a refusal into a `Refusal` carrying the platform's own
-// sentence (RFC 9457 problem+json `detail`).
+// sentence (RFC 9457 problem+json `detail`), and no answer at all into `Silence`.
 
 import { api } from '~/lib/api'
-import { bearer, org } from '~/lib/token'
+import { acting, bearer } from '~/lib/token'
 
 export class Refusal extends Error {
   readonly status: number
@@ -18,6 +18,14 @@ export class Refusal extends Error {
     this.status = status
     this.code = code
     this.problem = problem
+  }
+}
+
+/** No answer came back: the request failed on the way, so what the platform did with it is unknown. */
+export class Silence extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'Silence'
   }
 }
 
@@ -47,7 +55,7 @@ function headers(call: Call): Headers {
   if (call.anonymous) return h
   const token = bearer()
   if (token) h.set('Authorization', `Bearer ${token}`)
-  const chosen = org()
+  const chosen = acting()
   if (token && chosen) h.set('X-Org-Id', chosen)
   return h
 }
@@ -71,11 +79,16 @@ export const LAPSED = 'market:lapsed'
 
 async function send(call: Call): Promise<Response> {
   const h = headers(call)
-  const res = await fetch(url(call.path, call.query), {
-    method: call.method ?? 'GET',
-    headers: h,
-    body: call.body === undefined ? undefined : JSON.stringify(call.body),
-  })
+  let res: Response
+  try {
+    res = await fetch(url(call.path, call.query), {
+      method: call.method ?? 'GET',
+      headers: h,
+      body: call.body === undefined ? undefined : JSON.stringify(call.body),
+    })
+  } catch (e) {
+    throw new Silence(`api.hanzo.ai did not answer: ${why(e)}`)
+  }
   if (res.status === 401 && h.has('Authorization') && typeof window !== 'undefined') window.dispatchEvent(new Event(LAPSED))
   if (!res.ok) throw await refusal(res)
   return res
@@ -116,3 +129,12 @@ export const needsSession = (status: number | null): boolean => status === 401 |
 export const unbuilt = (e: unknown): boolean => e instanceof Refusal && notServed(e.status)
 
 export const unsigned = (e: unknown): boolean => e instanceof Refusal && needsSession(e.status)
+
+/**
+ * The failure left unknown what the platform did: no answer came back, or the
+ * platform or its gateway failed (5xx), timed the request out (408) or throttled
+ * it (429). A write that failed this way may have taken effect, so it is sent
+ * again exactly as it was; any other refusal is the platform's answer.
+ */
+export const lost = (e: unknown): boolean =>
+  e instanceof Silence || (e instanceof Refusal && (e.status >= 500 || e.status === 408 || e.status === 429))

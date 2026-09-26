@@ -161,6 +161,8 @@ test('payment waits on a finished clearance of the amount it pays', async ({ pag
 
 // Red market-4: a foreign seller's clearance asks where the work is performed, and
 // the buyer had no way to answer — so no foreign seller could ever be paid.
+// Red market-17: as in cloud (principals rules.go), work a foreign seller performs in
+// the U.S. is withheld 30% under chapter 3, which a job cannot pay; elsewhere it clears.
 test('a foreign seller: the buyer says where the work is performed, and the job carries it', async ({ page }) => {
   const w = world({ clearance: 'foreign' })
   wallet(w)
@@ -173,14 +175,137 @@ test('a foreign seller: the buyer says where the work is performed, and the job 
   const pay = page.getByRole('button', { name: 'Pay $250.00 and open the job' })
   await expect(pay).toBeDisabled()
 
-  await page.getByRole('textbox', { name: 'Where the work is performed (2 letters)' }).fill('us')
+  const where = page.getByRole('textbox', { name: 'Where the work is performed (2 letters)' })
+  await where.fill('us')
+  await page.getByRole('button', { name: 'Check clearance' }).click()
+  await expect(page.getByText('Cleared only with tax withheld')).toBeVisible()
+  await expect(page.locator('[data-withholding]')).toContainText('30% ($75.00) of this payment is withheld')
+  await expect(pay).toBeDisabled()
+  expect(w.cleared.at(-1)).toEqual({ payee: 'orbital', amount: '250.00', rail: 'x402', category: 'services', performed: 'US' })
+
+  await where.fill('de')
   await page.getByRole('button', { name: 'Check clearance' }).click()
   await expect(page.getByText('Cleared to pay')).toBeVisible()
-  expect(w.cleared.at(-1)).toEqual({ payee: 'orbital', amount: '250.00', rail: 'x402', category: 'services', performed: 'US' })
+  expect(w.cleared.at(-1)).toEqual({ payee: 'orbital', amount: '250.00', rail: 'x402', category: 'services', performed: 'DE' })
   await pay.click()
   await expect(page).toHaveURL(/\/jobs\/job_1$/)
-  expect(w.hires.map((h) => h.performed)).toEqual(['US', 'US'])
-  expect(w.jobs[0]).toMatchObject({ performed: 'US', status: 'open' })
+  expect(w.hires.map((h) => h.performed)).toEqual(['DE', 'DE'])
+  expect(w.jobs[0]).toMatchObject({ performed: 'DE', status: 'open' })
+})
+
+/** Fill the brief, clear $250.00, and answer the Pay button. */
+async function cleared(page: Page) {
+  await page.getByRole('textbox', { name: 'What do you need done?' }).fill('A market map.')
+  await page.getByRole('button', { name: 'Check clearance' }).click()
+  await expect(page.getByText('Cleared to pay')).toBeVisible()
+  return page.getByRole('button', { name: 'Pay $250.00 and open the job' })
+}
+
+const opened = (w: World) => w.jobs.filter((j) => j.status === 'open')
+const signings = (page: Page) => {
+  const signed: string[] = []
+  page.on('request', (r) => {
+    if (/\/v1\/wallet\/[^/]+\/sign$/.test(new URL(r.url()).pathname)) signed.push(JSON.parse(r.postData() ?? '{}').digest)
+  })
+  return signed
+}
+
+// Red market-12: cloud opened the job and set the amount aside, but the answer was
+// lost (a gateway timeout). The retry re-quoted with a new deadline, signed a second
+// payment and opened a second job with a second hold.
+test('a payment whose answer was lost is sent again as it was, and opens one job', async ({ page }) => {
+  const w = world({ lose: { quote: 0, pay: 1 } })
+  wallet(w)
+  await toCheckout(page, w)
+  const signed = signings(page)
+  await (await cleared(page)).click()
+  await expect(page.getByText('upstream request timeout')).toBeVisible()
+  await expect(page.locator('[data-unanswered]')).toContainText('Your wallet signed $250.00 in USD Coin to 0x209693Bc6afc0C5328bA36FaF03C514EF312287C for job job_1')
+  expect(opened(w)).toHaveLength(1)
+
+  await page.getByRole('button', { name: 'Send the same payment again' }).click()
+  await expect(page).toHaveURL(/\/jobs\/job_1$/)
+  expect(opened(w).map((j) => j.id)).toEqual(['job_1'])
+  expect(w.hires.map((h) => (h.payment ? 'pay' : 'quote'))).toEqual(['quote', 'pay', 'pay'])
+  expect(w.hires[2].payment).toBe(w.hires[1].payment)
+  expect(signed).toHaveLength(1)
+})
+
+test('a quote whose answer was lost is asked again with the same deadline, and gets the same job', async ({ page }) => {
+  const w = world({ lose: { quote: 1, pay: 0 } })
+  wallet(w)
+  await toCheckout(page, w)
+  await (await cleared(page)).click()
+  await expect(page.getByText('upstream request timeout')).toBeVisible()
+  await expect(page.locator('[data-unanswered]')).toContainText('Nothing was signed yet')
+  await page.getByRole('button', { name: 'Ask again with the same terms' }).click()
+  await expect(page).toHaveURL(/\/jobs\/job_1$/)
+  const quotes = w.hires.filter((h) => !h.payment)
+  expect(quotes).toHaveLength(2)
+  expect(quotes[1].deadline).toBe(quotes[0].deadline)
+  expect(w.jobs.map((j) => [j.id, j.status])).toEqual([['job_1', 'open']])
+})
+
+test('a new attempt first finds a job already under way for exactly these terms', async ({ page }) => {
+  const w = world({ lose: { quote: 0, pay: 1 } })
+  wallet(w)
+  await toCheckout(page, w)
+  await (await cleared(page)).click()
+  await expect(page.getByText('upstream request timeout')).toBeVisible()
+
+  // The page is left and opened again: the lost attempt is gone, the job it opened is not.
+  await page.reload()
+  const pay = await cleared(page)
+  const before = w.hires.length
+  await pay.click()
+  await expect(page.locator('[data-underway]')).toContainText('Your organization already has job job_1 under way for exactly this: $250.00, open.')
+  await expect(pay).toBeDisabled()
+  await expect(page.getByRole('link', { name: 'Open job_1' })).toHaveAttribute('href', '/jobs/job_1')
+  expect(w.hires).toHaveLength(before)
+
+  // Told, the buyer may still hire again: a second job, knowingly.
+  await page.getByRole('button', { name: 'Hire again anyway' }).click()
+  await pay.click()
+  await expect(page).toHaveURL(/\/jobs\/job_2$/)
+  expect(opened(w).map((j) => j.id)).toEqual(['job_1', 'job_2'])
+})
+
+// Red market-15: the wallet signed whatever the 402 named — here 100 times the
+// amount cleared, to an address that is not the seller's.
+test('the wallet signs no terms other than the job it cleared', async ({ page }) => {
+  const w = world()
+  wallet(w)
+  await toCheckout(page, w, () =>
+    page.route(/\/v1\/marketplace\/jobs$/, (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      const t = {
+        x402Version: 2,
+        resource: { url: 'job:job_1' },
+        accepts: [
+          {
+            scheme: 'exact',
+            network: 'eip155:36963',
+            amount: '25000000000',
+            asset: '0x5425890298aed601595a70AB815c96711a31Bc65',
+            payTo: '0x000000000000000000000000000000000000dEaD',
+            maxTimeoutSeconds: 300,
+            extra: { assetTransferMethod: 'eip3009', name: 'USD Coin', version: '2' },
+          },
+        ],
+      }
+      return route.fulfill({
+        status: 402,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({ status: 402, detail: 'sign the payment', paymentRequired: Buffer.from(JSON.stringify(t)).toString('base64') }),
+      })
+    }),
+  )
+  const signed = signings(page)
+  await (await cleared(page)).click()
+  await expect(page.getByText('The platform asked the wallet to sign $25,000.00 for a job cleared at $250.00. Nothing was signed.')).toBeVisible()
+  // An answer, not a lost one: nothing is held for a retry.
+  await expect(page.locator('[data-unanswered]')).toHaveCount(0)
+  expect(signed).toEqual([])
 })
 
 test('clearance not live yet holds payment, and says so', async ({ page }) => {

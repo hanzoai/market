@@ -3,9 +3,12 @@
 // payment. The EIP-712 digest is viem's; cloud verifies the same encoding
 // (apps/x402/protocol.go eip712Digest), and x402.test.ts checks a payment cloud's
 // own Sign produced against it. Signing is the org wallet's, on the platform
-// (POST /v1/wallet/{id}/sign): no key is ever in this page.
+// (POST /v1/wallet/{id}/sign): no key is ever in this page, and the page is the
+// buyer's own check that the terms it signs are the job it cleared (`vet`).
 
-import { hashTypedData, type Hex } from 'viem'
+import { hashTypedData, isAddress, type Hex } from 'viem'
+
+import { atomic, scaled, usd } from '~/lib/money'
 
 export const VERSION = 2
 
@@ -77,13 +80,60 @@ export function terms(problem: Record<string, unknown> | undefined): Required | 
   }
 }
 
-/** The one requirement this page signs: exact, EIP-3009, on an EVM chain. */
+/**
+ * The EIP-3009 assets this page signs for, by EIP-712 domain, and the atomic-unit
+ * scale of each. USDC ("USD Coin", version "2", 6 places) is what cloud's rail
+ * settles in (apps/x402 DefaultAssetName, DefaultAssetVersion, DefaultAssetDecimals).
+ * Terms in any other asset are not signed: their value cannot be checked against
+ * the dollars the buyer cleared.
+ */
+const PLACES = new Map([['USD Coin/2', 6]])
+
+/** The atomic-unit scale of the asset a requirement names, or null for an asset this page does not know. */
+export const places = (a: Requirements): number | null => PLACES.get(`${a.extra?.name ?? ''}/${a.extra?.version ?? ''}`) ?? null
+
+/** The one requirement this page signs: exact, EIP-3009, on an EVM chain, in an asset it knows. */
 export function payable(r: Required): Requirements | null {
   return (
     r.accepts.find(
-      (a) => a.scheme === 'exact' && /^eip155:\d+$/.test(a.network) && (a.extra?.assetTransferMethod ?? 'eip3009') === 'eip3009' && Boolean(a.extra?.name),
+      (a) => a.scheme === 'exact' && /^eip155:\d+$/.test(a.network) && (a.extra?.assetTransferMethod ?? 'eip3009') === 'eip3009' && places(a) !== null,
     ) ?? null
   )
+}
+
+/** What a job's payment signs, once `vet` checked it. */
+export interface Vetted {
+  /** The job the terms are for (resource job:<id>). */
+  job: string
+  accepted: Requirements
+}
+
+const ZERO = /^0x0{40}$/i
+
+/**
+ * The terms a 402 names for a job, checked before anything is signed: they are for
+ * a job, in an asset this page knows the scale of, for exactly the dollars the
+ * buyer cleared, and to a payee that is an address other than the payer's own. The
+ * platform cannot ask the wallet for anything else: other terms are refused, and
+ * nothing is signed.
+ */
+export function vet(r: Required, amount: string, payer: string): Vetted {
+  const job = /^job:([A-Za-z0-9_-]+)$/.exec(r.resource.url)?.[1]
+  if (!job) throw new Error(`The payment terms are for ${r.resource.url}, not a job. Nothing was signed.`)
+  const accepted = payable(r)
+  if (!accepted) throw new Error('The payment terms name no chain and asset this storefront can sign for. Nothing was signed.')
+  const scale = places(accepted) ?? 0
+  const asked = /^\d{1,78}$/.test(accepted.amount) ? BigInt(accepted.amount) : null
+  if (asked === null) throw new Error('The payment terms name no amount. Nothing was signed.')
+  if (asked !== atomic(amount, scale)) {
+    throw new Error(`The platform asked the wallet to sign ${usd(scaled(asked, scale))} for a job cleared at ${usd(amount)}. Nothing was signed.`)
+  }
+  const to = accepted.payTo
+  if (!isAddress(to, { strict: false }) || ZERO.test(to) || to.toLowerCase() === payer.toLowerCase()) {
+    throw new Error(`The payment terms pay ${to || 'no one'}, which is not a seller's address. Nothing was signed.`)
+  }
+  if (!isAddress(accepted.asset, { strict: false })) throw new Error('The payment terms name no token contract. Nothing was signed.')
+  return { job, accepted }
 }
 
 export function chainId(network: string): number {

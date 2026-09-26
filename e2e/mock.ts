@@ -7,7 +7,10 @@
 // The shapes are cloud's (hanzo-inc/cloud 725e61052). A hire is its two steps: a
 // 402 with x402 terms, then the payment, whose signature is checked against the
 // terms with viem's own EIP-712 recovery — and the org wallet that signs it holds
-// a real key, generated per world.
+// a real key, generated per world. As in cloud's jobs.go, the same terms asked
+// again answer the quote already made, and the same payment presented again
+// answers the job it opened. `lose` drops the answer to a hire step after it took
+// effect, as a gateway timeout does.
 
 import type { Page, Route } from '@playwright/test'
 import { hashMessage, recoverAddress, recoverTypedDataAddress, type Hex } from 'viem'
@@ -29,6 +32,10 @@ export interface World {
   jobs: Row[]
   /** Every hire request, both steps. */
   hires: Row[]
+  /** The payment that opened each job, by job id. */
+  paid: Record<string, string>
+  /** How many answers to lose, per hire step, after the step took effect. */
+  lose: { quote: number; pay: number }
   wallets: Row[]
   /** The key behind each wallet the org creates or holds. */
   keys: Record<string, PrivateKeyAccount>
@@ -106,6 +113,8 @@ export function world(over: Partial<World> = {}): World {
     ],
     jobs: [],
     hires: [],
+    paid: {},
+    lose: { quote: 0, pay: 0 },
     wallets: [],
     keys: {},
     apps: [
@@ -254,6 +263,18 @@ function decide(w: World, body: Row): Row {
       settlement_methods: [],
       withholding: { reason: 'Undetermined until the source of the income is known.', rule },
     }
+  // Pay for work performed in the U.S. is U.S.-source: a foreign payee is withheld 30% (chapter 3).
+  if (w.clearance === 'foreign' && body.performed === 'US') {
+    const kept = (amount * 0.3).toFixed(2)
+    return {
+      ...base,
+      status: 'foreign',
+      allowed: true,
+      required_before_payment: [],
+      settlement_methods: [{ rail: 'ledger', net: (amount - Number(kept)).toFixed(2), withheld: kept, rule }],
+      withholding: { chapter: '3', rate: '30', amount: kept, reason: 'Pay for work performed in the United States is U.S.-source income of a foreign person (IRC §1442).', rule },
+    }
+  }
   if (w.clearance === 'withheld') {
     const kept = (amount * 0.24).toFixed(2)
     return {
@@ -322,6 +343,8 @@ async function signer(payment: string): Promise<{ from: string; to: string; valu
   return { from: a.from, to: a.to, value: a.value, validBefore: Number(a.validBefore), resource: p.resource.url }
 }
 
+const gatewayTimeout = (route: Route) => problem(route, 504, 'upstream request timeout')
+
 async function hire(route: Route, w: World, body: Row) {
   w.hires.push(body)
   const l = w.shop.find((x) => x.id === body.listing)
@@ -330,41 +353,66 @@ async function hire(route: Route, w: World, body: Row) {
   if (!d.allowed) return problem(route, 403, `clearance ${String(d.id)}: this payment cannot clear now`)
   if (Number((d.settlement_methods as { withheld: string }[])[0].withheld) > 0)
     return problem(route, 409, `clearance ${String(d.id)}: this payment clears only net of withholding`)
+  const amount = Number(body.amount).toFixed(2)
   if (!body.payment) {
-    const id = `job_${w.jobs.length + 1}`
-    const t = terms(id, String(body.amount))
-    return problem(route, 402, `sign the payment for job:${id}`, { paymentRequired: Buffer.from(JSON.stringify(t)).toString('base64'), ...t })
+    // The same terms asked again: the quote they already have (store.go quoted).
+    let q = w.jobs.find(
+      (j) =>
+        j.status === 'quoted' &&
+        j.buyerOrg === w.org &&
+        j.listing === body.listing &&
+        j.brief === body.brief &&
+        j.amount === amount &&
+        j.deadline === body.deadline &&
+        (j.performed ?? '') === (body.performed ?? ''),
+    )
+    if (!q) {
+      q = {
+        id: `job_${w.jobs.length + 1}`,
+        listing: body.listing,
+        title: l.title,
+        buyerOrg: w.org,
+        sellerOrg: l.publisherOrg,
+        amount,
+        currency: 'USD',
+        category: body.category ?? 'service',
+        status: 'quoted',
+        brief: body.brief,
+        performed: body.performed,
+        deadline: body.deadline,
+        review: 259_200,
+        clearance: d.id,
+        escrow: { rail: 'x402', network: 'eip155:36963', contract: USDC },
+        history: [{ status: 'quoted', at: NOW, by: w.org }],
+        createdAt: NOW,
+        updatedAt: NOW,
+      }
+      w.jobs.push(q)
+    }
+    if (w.lose.quote > 0) return (w.lose.quote--, gatewayTimeout(route))
+    const t = terms(String(q.id), amount)
+    return problem(route, 402, `sign the payment for job:${String(q.id)}`, { paymentRequired: Buffer.from(JSON.stringify(t)).toString('base64'), ...t })
   }
   const who = await signer(body.payment as string)
   if (typeof who === 'string') return problem(route, 402, `the payment was refused: ${who}`)
   const id = who.resource.replace(/^job:/, '')
+  const j = w.jobs.find((x) => x.id === id && x.buyerOrg === w.org)
+  if (!j) return problem(route, 404, 'job not found')
+  if (j.status !== 'quoted') {
+    // The same payment again: the job it opened (jobs.go fund).
+    return w.paid[id] === body.payment ? json(route, 200, j) : problem(route, 409, `job ${id} is already paid for`)
+  }
+  if (j.amount !== amount) return problem(route, 409, `the payment is for job ${id}, at another amount`)
   if (who.validBefore < Number(body.deadline) + 18 * 86_400) return problem(route, 402, 'the authorization must stay valid through the deadline')
-  const made = {
-    id,
-    listing: body.listing,
-    title: l.title,
-    buyerOrg: w.org,
-    sellerOrg: l.publisherOrg,
-    amount: Number(body.amount).toFixed(2),
-    currency: 'USD',
-    category: body.category ?? 'service',
+  w.paid[id] = body.payment as string
+  Object.assign(j, {
     status: 'open',
-    brief: body.brief,
-    performed: body.performed,
-    deadline: body.deadline,
-    review: 259_200,
-    clearance: d.id,
     payer: who.from,
     escrow: { rail: 'x402', network: 'eip155:36963', contract: USDC, payTo: PAY_TO },
-    history: [
-      { status: 'quoted', at: NOW, by: w.org },
-      { status: 'open', at: NOW, by: w.org },
-    ],
-    createdAt: NOW,
-    updatedAt: NOW,
-  }
-  w.jobs.push(made)
-  return json(route, 201, made)
+    history: [...(j.history as Row[]), { status: 'open', at: NOW, by: w.org }],
+  })
+  if (w.lose.pay > 0) return (w.lose.pay--, gatewayTimeout(route))
+  return json(route, 201, j)
 }
 
 async function api(route: Route, w: World) {
@@ -480,7 +528,7 @@ async function api(route: Route, w: World) {
   if (method === 'POST' && path === '/v1/marketplace/seller/payout') {
     const wal = w.wallets.find((x) => x.id === body.wallet)
     if (!wal) return problem(route, 404, 'wallet not found')
-    const message = `Hanzo marketplace payout wallet\norg: ${w.org}\nwallet: ${String(wal.id)}\naddress: ${String(wal.address)}`
+    const message = `Hanzo marketplace payout wallet\norg: ${w.org}\nwallet: ${String(wal.id)}\naddress: ${String(wal.address)}\nnonce: 5f0e2a91c4d3b7a8\nexpires: ${NOW + 900}`
     w.challenge = { wallet: String(wal.id), address: String(wal.address), digest: hashMessage(message) }
     return json(route, 200, { wallet: wal.id, address: wal.address, message, digest: w.challenge.digest, expires: NOW + 900 })
   }

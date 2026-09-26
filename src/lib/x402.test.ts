@@ -1,6 +1,6 @@
 import { recoverAddress } from 'viem'
 
-import { chainId, digest, nonce, payable, payment, terms, type Required } from '~/lib/x402'
+import { chainId, digest, nonce, payable, payment, places, terms, type Required } from '~/lib/x402'
 
 // A payment signed by cloud's own client half, apps/x402.Sign at hanzo-inc/cloud
 // 725e61052, for these exact inputs, and accepted by its Verify. The digest this
@@ -52,6 +52,15 @@ describe('x402', () => {
     expect(payable(r)).toBe(CLOUD.accepted)
     expect(payable({ ...r, accepts: [{ ...CLOUD.accepted, extra: { assetTransferMethod: 'permit2', name: 'USD Coin', version: '2' } }] })).toBeNull()
     expect(payable({ ...r, accepts: [{ ...CLOUD.accepted, scheme: 'upto' }] })).toBeNull()
+  })
+
+  it('signs only an asset whose scale it knows: USDC, 6 places', () => {
+    const r: Required = { x402Version: 2, resource: { url: 'job:job_1' }, accepts: [CLOUD.accepted] }
+    expect(places(CLOUD.accepted)).toBe(6)
+    const other = { ...CLOUD.accepted, extra: { assetTransferMethod: 'eip3009', name: 'Dai Stablecoin', version: '1' } }
+    expect(places(other)).toBeNull()
+    expect(payable({ ...r, accepts: [other] })).toBeNull()
+    expect(places({ ...CLOUD.accepted, extra: undefined })).toBeNull()
   })
 
   it('names the chain and draws a fresh nonce', () => {

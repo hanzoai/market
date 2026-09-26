@@ -1,4 +1,5 @@
-import { blob, LAPSED, needsSession, notServed, Refusal, request, text, unbuilt, unsigned, url, why } from '~/lib/http'
+import { blob, LAPSED, lost, needsSession, notServed, Refusal, request, Silence, text, unbuilt, unsigned, url, why } from '~/lib/http'
+import { show } from '~/lib/token'
 
 const jwt = `h.${btoa(JSON.stringify({ sub: 's', orgs: ['acme'] }))}.s`
 
@@ -102,5 +103,31 @@ describe('http', () => {
     expect(needsSession(404)).toBe(false)
     expect(why('plain')).toBe('plain')
     expect(unbuilt(new Error('x'))).toBe(false)
+  })
+
+  // Red market-13: X-Org-Id was read from storage every tab shares, not the org this tab shows.
+  it('sends the org this tab shows', async () => {
+    localStorage.setItem('hanzo_iam_access_token', `h.${btoa(JSON.stringify({ sub: 's', orgs: ['acme', 'globex'] }))}.s`)
+    show('acme')
+    localStorage.setItem('hanzo_iam_current_org', 'globex')
+    const f = answer(200, '{}')
+    vi.stubGlobal('fetch', f)
+    await request({ method: 'POST', path: '/v1/tax/profile/certify', body: {} })
+    expect(((f.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Headers).get('X-Org-Id')).toBe('acme')
+  })
+
+  it('says no answer came back when the request never reached the platform', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    const e = await request({ method: 'POST', path: '/v1/marketplace/jobs', body: {} }).catch((x: unknown) => x)
+    expect(e).toBeInstanceOf(Silence)
+    expect(e).toMatchObject({ message: 'api.hanzo.ai did not answer: Failed to fetch' })
+    expect(lost(e)).toBe(true)
+    expect(lost(new Refusal(503, 'down'))).toBe(true)
+    expect(lost(new Refusal(404, 'no route'))).toBe(false)
   })
 })

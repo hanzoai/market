@@ -133,7 +133,7 @@ function Inner() {
       </Section>
 
       <Section title="Payout wallet" says="Sales settle into a wallet your organization holds: per call over x402, and for a job when the buyer releases it. The wallet signs once to prove it is yours; jobs are paid into it.">
-        <Payout wallets={mine} standing={standing} />
+        <Payout org={session.org ?? ''} wallets={mine} standing={standing} />
       </Section>
     </Page>
   )
@@ -437,7 +437,7 @@ function TaxForm({ onSaved }: { onSaved: () => void }) {
   )
 }
 
-function Payout({ wallets: read, standing }: { wallets: Read<{ wallets: Wallet[] }>; standing: Read<Onboarding> }) {
+function Payout({ org, wallets: read, standing }: { org: string; wallets: Read<{ wallets: Wallet[] }>; standing: Read<Onboarding> }) {
   const { busy, failed, status, run } = useRun()
   if (read.failed) return <Failed what="load your wallets" why={read.failed} />
   if (!read.it) return <Nothing says="Loading…" />
@@ -463,7 +463,7 @@ function Payout({ wallets: read, standing }: { wallets: Read<{ wallets: Wallet[]
             {payout?.bound && payout.wallet === w.id ? (
               <Mark tone="up" says="Payouts go here" />
             ) : payout ? (
-              <Act disabled={busy} onPress={() => void run(async () => (await bindPayout(w.id), standing.again()))} label={`Use ${w.name} for payouts`}>
+              <Act disabled={busy} onPress={() => void run(async () => (await bindPayout(org, w), standing.again()))} label={`Use ${w.name} for payouts`}>
                 Use for payouts
               </Act>
             ) : null}

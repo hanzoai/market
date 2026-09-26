@@ -7,7 +7,7 @@ import { useState, type ReactNode } from 'react'
 import { Text, XStack, YStack } from '@hanzo/ui'
 
 import { notServed, why } from '~/lib/http'
-import { lead, setAside, split } from '~/lib/earnings'
+import { floor, JOBS, lead, RECEIPTS, setAside, split } from '~/lib/earnings'
 import { words } from '~/lib/job'
 import { jobs, seller, settlements, statementPdf, taxInbox, type Statement } from '~/lib/market'
 import { cents, usd } from '~/lib/money'
@@ -43,9 +43,9 @@ function Inner() {
       <SellNav />
       <XStack gap="$3" flexWrap="wrap">
         <Tile read={standing} says={`Earned in ${year}`} of={(s) => `${s.earnings.partial ? 'at least ' : ''}${usd(s.earnings.gross, s.earnings.currency)}`} />
-        <Tile read={paid} says="Per call (x402)" of={(p) => usd(split(p).perCall)} />
-        <Tile read={paid} says="Paid for jobs" of={(p) => usd(split(p).jobs)} />
-        <Tile read={work} says="Set aside for your open jobs" of={(w) => usd(setAside(w))} />
+        <Tile read={paid} says="Per call (x402)" of={(p) => `${floor(p, RECEIPTS)}${usd(split(p).perCall)}`} />
+        <Tile read={paid} says="Paid for jobs" of={(p) => `${floor(p, RECEIPTS)}${usd(split(p).jobs)}`} />
+        <Tile read={work} says="Set aside for your open jobs" of={(w) => `${floor(w, JOBS)}${usd(setAside(w))}`} />
       </XStack>
 
       <Section title="Settlements" says="Each x402 payment your organization received.">
@@ -59,6 +59,11 @@ function Inner() {
           <Nothing says={`No x402 payments in ${year}.`} />
         ) : (
           <YStack>
+            {floor(paid.it, RECEIPTS) ? (
+              <Text fontSize="$2" color="$quiet" data-cut="">
+                {`The newest ${paid.it.length.toLocaleString('en-US')} payments. The platform lists no more than that, so the figures above from them are floors.`}
+              </Text>
+            ) : null}
             {paid.it.map((r) => (
               <Row key={r.id}>
                 <Text fontSize="$2" color="$ink" flex={1} numberOfLines={1}>

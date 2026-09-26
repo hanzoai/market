@@ -103,6 +103,26 @@ export function org(): string | null {
   return mine[0] ?? null
 }
 
+/** Whether a storage change is to the org this browser works in (null: storage was cleared). */
+export const choice = (key: string | null): boolean => key === null || key === CURRENT
+
+/** The org this tab shows, once its session names it. */
+let shown: string | null | undefined
+
+/**
+ * Fix the org this tab's requests act as to the one its screen shows. Storage is
+ * shared by every tab, so another tab's switch would otherwise make this one act
+ * as an org it is not showing.
+ */
+export function show(o: string | null): void {
+  shown = o
+}
+
+/** The org a request acts as: the one this tab shows, or the stored choice before a session has named one. */
+export function acting(): string | null {
+  return shown === undefined ? org() : shown
+}
+
 /** Record the org this browser works in. Refuses one the token does not list. */
 export function work(pick: string): boolean {
   if (!orgs().includes(pick)) return false

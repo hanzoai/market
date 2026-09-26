@@ -1,4 +1,4 @@
-import { forJob, lead, setAside, split } from '~/lib/earnings'
+import { floor, forJob, JOBS, lead, RECEIPTS, setAside, split } from '~/lib/earnings'
 import type { Job, Receipt, Statement } from '~/lib/market'
 
 const receipt = (amount: string, resource: string): Receipt => ({
@@ -59,5 +59,15 @@ describe('earnings', () => {
     expect(lead(s)).toEqual({ box: '1', label: 'Nonemployee compensation', cents: 100 })
     expect(lead({ boxes: [{ box: '3', label: 'Other income', cents: 7 }] } as Statement)?.cents).toBe(7)
     expect(lead({ boxes: [] as Statement['boxes'] } as Statement)).toBeNull()
+  })
+
+  // Red market-14: cloud answers the newest 1000 receipts (500 jobs) and no total,
+  // and a sum of that page was shown as the year's.
+  it('reads a sum over a list the platform may have cut as a floor', () => {
+    expect([RECEIPTS, JOBS]).toEqual([1000, 500])
+    expect(floor(Array.from({ length: 1000 }), RECEIPTS)).toBe('at least ')
+    expect(floor(Array.from({ length: 999 }), RECEIPTS)).toBe('')
+    expect(floor(Array.from({ length: 500 }), JOBS)).toBe('at least ')
+    expect(floor([], JOBS)).toBe('')
   })
 })

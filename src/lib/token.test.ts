@@ -1,4 +1,4 @@
-import { bearer, claims, org, orgs, own, subject, work } from '~/lib/token'
+import { acting, bearer, choice, claims, org, orgs, own, show, subject, work } from '~/lib/token'
 
 const jwt = (payload: unknown) => `h.${btoa(JSON.stringify(payload)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')}.s`
 
@@ -49,5 +49,22 @@ describe('session token', () => {
     expect(localStorage.getItem('hanzo:who')).toBe('initech/bob')
     own(undefined)
     expect(localStorage.getItem('hanzo:who')).toBeNull()
+  })
+
+  // Red market-13: another tab's switch made this one act as an org it was not showing.
+  it('acts as the org this tab shows, whatever another tab stored since', () => {
+    localStorage.setItem('hanzo_iam_access_token', jwt({ sub: 's', orgs: ['acme', 'globex'] }))
+    expect(acting()).toBe('acme')
+    show('acme')
+    localStorage.setItem('hanzo_iam_current_org', 'globex')
+    expect(org()).toBe('globex')
+    expect(acting()).toBe('acme')
+    show('globex')
+    expect(acting()).toBe('globex')
+    show(null)
+    expect(acting()).toBeNull()
+    expect(choice('hanzo_iam_current_org')).toBe(true)
+    expect(choice(null)).toBe(true)
+    expect(choice('hanzo_iam_access_token')).toBe(false)
   })
 })
