@@ -203,7 +203,7 @@ test('a platform tool is installed and paid per call over x402', async ({ page }
   await signIn(page, '/checkout/lst_geocode')
   await page.getByRole('button', { name: 'Install and pay per call' }).click()
   await expect(page.getByText('Installed for acme')).toBeVisible()
-  await expect(page.getByText(/Each call costs \$0\.0025 and settles over x402 to admin/)).toBeVisible()
+  await expect(page.getByText(/Each call costs \$0\.0025 and settles over x402 to Hanzo/)).toBeVisible()
   expect(w.installed).toEqual(['geocode'])
   expect(w.cleared).toEqual([])
 })

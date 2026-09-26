@@ -82,7 +82,8 @@ function One() {
   const { id = '' } = useParams()
   const read = useRead(() => getJob(id), [id])
   const [fresh, setFresh] = useState<Job | null>(null)
-  const j = fresh ?? read.it
+  // An act's answer stands for this job only; another job is read afresh.
+  const j = fresh?.id === id ? fresh : read.it
 
   if (read.failed) {
     return (

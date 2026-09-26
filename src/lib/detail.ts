@@ -3,7 +3,7 @@
 // reputation, how to get it, and how to reach it from docs, the CLI and MCP.
 
 import { web } from '~/lib/api'
-import { fromApp, fromListing, fromMcp, fromSkill, type Item } from '~/lib/catalog'
+import { fromApp, fromListing, fromMcp, fromSkill, sellerName, type Item } from '~/lib/catalog'
 import type { AppEntry, McpListing, Reputation, ShopListing, SkillEntry } from '~/lib/market'
 import { free } from '~/lib/money'
 
@@ -46,7 +46,7 @@ export function listingDetail(l: ShopListing): Detail {
     item: fromListing(l),
     body: l.description,
     facts: [
-      ['Seller', l.seller.org],
+      ['Seller', sellerName(l.seller.org)],
       ['Tax form', l.seller.documented ? 'Certified' : 'Not on file'],
       [tool ? 'Tool' : 'Sells', l.tool],
       ...(l.category ? ([['Category', l.category]] as [string, string][]) : []),

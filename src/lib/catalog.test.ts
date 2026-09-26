@@ -1,4 +1,4 @@
-import { cards, fromApp, fromListing, fromMcp, fromSkill, held, isKind, LABEL, matches, PATH, shown, tally, wanted, type Shelf } from '~/lib/catalog'
+import { cards, fromApp, fromListing, fromMcp, fromSkill, held, isKind, LABEL, matches, PATH, sellerName, shown, tally, wanted, type Shelf } from '~/lib/catalog'
 import { KINDS, type AppEntry, type McpListing, type ShopListing } from '~/lib/market'
 
 const rep = { rating: 4.5, reviews: 2, installs: 3, jobs: { completed: 1, disputed: 0 } }
@@ -39,6 +39,9 @@ describe('catalog', () => {
     })
     expect(fromListing({ ...listing, price: '0' })).toMatchObject({ price: null })
     expect(fromListing({ ...listing, kind: 'tool', price: '0.0025' })).toMatchObject({ price: '$0.0025 per call' })
+    // The platform sells its tools from the reserved admin org; buyers know it as Hanzo.
+    expect(fromListing({ ...listing, seller: { ...listing.seller, org: 'admin' } }).by).toBe('Hanzo')
+    expect(sellerName('orbital')).toBe('orbital')
     expect(fromApp(app)).toMatchObject({ key: 'app:hanzo/chat', href: '/apps/hanzo/chat', title: 'chat', summary: '', by: 'hanzo' })
     expect(fromApp({ ...app, title: 'Hanzo Chat', description: 'Chat.' })).toMatchObject({ title: 'Hanzo Chat', summary: 'Chat.' })
     expect(fromSkill({ name: 'vector-search', service: 'vector', description: 'Search.', path: '/x' })).toMatchObject({

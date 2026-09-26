@@ -47,6 +47,9 @@ export function isKind(v: unknown): v is Kind {
   return typeof v === 'string' && (KINDS as readonly string[]).includes(v)
 }
 
+/** A seller as buyers know it: the reserved `admin` org is the platform itself, Hanzo. */
+export const sellerName = (org: string) => (org === 'admin' ? 'Hanzo' : org)
+
 export function fromListing(l: ShopListing): Item {
   return {
     key: `listing:${l.id}`,
@@ -54,7 +57,7 @@ export function fromListing(l: ShopListing): Item {
     href: `/l/${encodeURIComponent(l.id)}`,
     title: l.title,
     summary: l.description,
-    by: l.seller.org,
+    by: sellerName(l.seller.org),
     price: free(l.price) ? null : each(l.price, l.kind),
   }
 }

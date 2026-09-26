@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { Text, XStack, YStack } from '@hanzo/ui'
 import { useNavigate, useParams } from 'react-router'
 
+import { sellerName } from '~/lib/catalog'
 import { answers, asksWhere, facts, headline, net, netOnly, payable, todos, withholding } from '~/lib/clearance'
 import { notServed } from '~/lib/http'
 import { clearance, hire, install, shopListing, wallets, type ClearIn, type Clearance, type ShopListing } from '~/lib/market'
@@ -51,7 +52,7 @@ function PerCall({ listing }: { listing: ShopListing }) {
   const priced = !free(listing.price)
 
   return (
-    <Page eyebrow="Pay per call over x402" title={listing.title} says={`Sold by ${listing.seller.org} · ${priced ? each(listing.price, listing.kind) : 'Free'}`}>
+    <Page eyebrow="Pay per call over x402" title={listing.title} says={`Sold by ${sellerName(listing.seller.org)} · ${priced ? each(listing.price, listing.kind) : 'Free'}`}>
       <Stages
         of={[
           { label: '1 Install', stage: done ? 'done' : 'current' },
@@ -63,7 +64,7 @@ function PerCall({ listing }: { listing: ShopListing }) {
           <Panel>
             <Mark tone="up" says={`Installed for ${session.org ?? 'your organization'}`} />
             <Text fontSize="$2" color="$soft">
-              {priced ? `Each call costs ${usd(listing.price)} and settles over x402 to ${listing.seller.org}.` : 'This tool is free to call.'}
+              {priced ? `Each call costs ${usd(listing.price)} and settles over x402 to ${sellerName(listing.seller.org)}.` : 'This tool is free to call.'}
             </Text>
             <XStack>
               <Go to={`/l/${encodeURIComponent(listing.id)}`}>Back to the listing</Go>
@@ -135,7 +136,7 @@ function Hire({ listing }: { listing: ShopListing }) {
   }, [decided])
 
   return (
-    <Page eyebrow="Hire" title={listing.title} says={`Sold by ${listing.seller.org} · ${free(listing.price) ? 'Price agreed per job' : each(listing.price, listing.kind)}`}>
+    <Page eyebrow="Hire" title={listing.title} says={`Sold by ${sellerName(listing.seller.org)} · ${free(listing.price) ? 'Price agreed per job' : each(listing.price, listing.kind)}`}>
       <Stages
         of={[
           { label: '1 Clearance', stage: cleared ? 'done' : 'current' },
