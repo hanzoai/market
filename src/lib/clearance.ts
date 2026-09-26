@@ -4,8 +4,8 @@
 // pointed at the page that satisfies it, so checkout and seller onboarding say
 // the same thing about the same requirement.
 
-import type { Clearance, Step } from '~/lib/market'
-import { usd } from '~/lib/money'
+import type { ClearIn, Clearance, Step } from '~/lib/market'
+import { dollars, free, usd } from '~/lib/money'
 
 export interface Todo {
   title: string
@@ -44,9 +44,12 @@ export function todos(steps: Step[]): Todo[] {
 }
 
 /** The questions a decision turned on that the platform could not answer. */
-export function facts(c: Clearance): { question: string; blocks: boolean }[] {
-  return c.facts_required.map((f) => ({ question: f.question, blocks: f.blocks }))
+export function facts(c: Clearance): { code: string; question: string; blocks: boolean }[] {
+  return c.facts_required.map((f) => ({ code: f.code, question: f.question, blocks: f.blocks }))
 }
+
+/** Whether the buyer is asked where the work is performed — the one blocking fact a buyer answers. */
+export const asksWhere = (c: Clearance | null) => Boolean(c?.facts_required.some((f) => f.code === 'performed' && f.blocks))
 
 /** The withholding line, or null when nothing is withheld. */
 export function withholding(c: Clearance): string | null {
@@ -64,14 +67,42 @@ export function net(c: Clearance): string | null {
   return `The seller receives ${usd(m.net)}${Number(m.withheld) > 0 ? ` after ${usd(m.withheld)} is withheld` : ''}.`
 }
 
-/** Whether checkout may proceed. */
+/** Whether the platform allows the payment with nothing required first. */
 export function cleared(c: Clearance): boolean {
-  return c.allowed && c.required_before_payment.length === 0
+  return c.allowed && c.required_before_payment.length === 0 && !c.facts_required.some((f) => f.blocks)
+}
+
+/** What is kept back from the seller, or null when nothing is. */
+function kept(c: Clearance): string | null {
+  const m = c.settlement_methods[0]
+  return m && !free(m.withheld) ? m.withheld : null
+}
+
+/**
+ * Whether a job may be paid on this clearance. A job is paid over x402, which pays
+ * the whole amount to the seller and withholds nothing, so cloud refuses one that
+ * clears only net of withholding (apps/marketplace/jobs.go clear) — and so does this.
+ */
+export function payable(c: Clearance): boolean {
+  return cleared(c) && kept(c) === null
+}
+
+/** Why a cleared payment still cannot be paid as a job, or null. */
+export function netOnly(c: Clearance): string | null {
+  const w = kept(c)
+  if (!cleared(c) || w === null) return null
+  return `This payment clears only with ${usd(w)} withheld, and a job is paid in full over x402: the seller’s tax form must lift the withholding first.`
+}
+
+/** Whether `c` is the platform's answer to exactly `asked`: the same payee, amount and place. */
+export function answers(c: Clearance, asked: ClearIn): boolean {
+  return c.payee === asked.payee && dollars(c.amount) === dollars(asked.amount) && (c.performed ?? '') === (asked.performed ?? '')
 }
 
 /** The headline for the clearance step. */
 export function headline(c: Clearance): string {
-  if (cleared(c)) return 'Cleared to pay'
+  if (payable(c)) return 'Cleared to pay'
+  if (cleared(c)) return 'Cleared only with tax withheld'
   const n = c.required_before_payment.length + c.facts_required.filter((f) => f.blocks).length
   if (n === 0) return 'This payment cannot clear now'
   return `${n} thing${n === 1 ? '' : 's'} to finish before paying`

@@ -1,60 +1,84 @@
 // Every api.hanzo.ai operation this storefront calls, named once, with the shapes
-// cloud answers. Money is an exact decimal string (USD); times are unix seconds.
+// cloud answers (hanzo-inc/cloud 725e61052: apps/marketplace, apps/principals,
+// apps/x402, apps/wallet, apps/tax). Money is an exact decimal string (USD);
+// times are unix seconds.
 //
-// Operations marked SPECIFIED are the storefront's half of a contract cloud does
-// not serve yet; the types here are that contract. Pages call them and say "not
-// live yet" on a 404 rather than inventing an answer — which is also what they
-// say for an operation cloud has built but api.hanzo.ai does not route yet.
+// An operation api.hanzo.ai does not route yet answers 404, and the page that
+// asked says "not live yet" rather than inventing an answer.
 
-import { blob, request, text } from '~/lib/http'
+import { blob, Refusal, request, text } from '~/lib/http'
+import { digest, nonce, payable, payment, terms, type Authorization } from '~/lib/x402'
 
-export type Kind = 'agent' | 'app' | 'skill' | 'mcp'
-export const KINDS: readonly Kind[] = ['agent', 'app', 'skill', 'mcp']
+/** What a listing sells. A tool is the platform's, sold per call; everything else is hired for a job. */
+export type Kind = 'agent' | 'persona' | 'app' | 'skill' | 'mcp' | 'tool'
+/** In the order the shop facets them. */
+export const KINDS: readonly Kind[] = ['agent', 'persona', 'app', 'skill', 'mcp', 'tool']
 
-// ── /v1/marketplace ──────────────────────────────────────────────────────────
-
-export interface Listing {
-  id: string
-  publisherOrg: string
-  tool: string
-  title: string
-  description: string
-  category: string
-  /** "0" is free. */
-  price: string
-  currency: string
-  /** Payout wallet id in publisherOrg. */
-  recipient: string
-  public: boolean
-  createdAt: number
-  /** SPECIFIED: what the listing offers. */
-  kind?: Kind
-  /** SPECIFIED: where its documentation lives. */
-  docs?: string
-}
+// ── /v1/marketplace: the shop and an org's listings ─────────────────────────
 
 export interface Reputation {
-  /** 0–5, null until the first review. */
+  /** 1–5 to one decimal, null until the first review. */
   rating: number | null
   reviews: number
   installs: number
   jobs: { completed: number; disputed: number }
 }
 
-/** SPECIFIED: a public listing as anyone may read it. */
-export interface ShopListing extends Listing {
+/** One of the caller org's own listings. */
+export interface Listing {
+  id: string
+  publisherOrg: string
   kind: Kind
-  publisherName?: string
+  /** The thing sold, as the seller named it. */
+  tool: string
+  /** The id the owning app knows the thing by. */
+  ref: string
+  title: string
+  description: string
+  category: string
+  /** Per call for a tool, per job otherwise; "0" is free. */
+  price: string
+  currency: string
+  /** Payout wallet id in publisherOrg. */
+  recipient: string
+  public: boolean
+  docs?: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** A public listing as anyone may read it. */
+export interface ShopListing {
+  id: string
+  publisherOrg: string
+  kind: Kind
+  tool: string
+  title: string
+  description: string
+  category: string
+  price: string
+  currency: string
+  public: boolean
+  docs?: string
+  createdAt: number
+  updatedAt: number
+  /** What anyone may know about the seller: documented is a certified, valid tax form. */
+  seller: { org: string; documented: boolean; reputation: Reputation }
   reputation: Reputation
+  /** The ways to act on it: its docs, the hanzo command and the MCP operation that buy it. */
+  links: { docs?: string; cli: string; mcp: { tool: string; op: string } }
 }
 
 export interface Shop {
   listings: ShopListing[]
+  /** How many listings the search matched, past this page. */
   total: number
-  facets?: { kind?: Partial<Record<Kind, number>> }
+  /** Counts by kind, category, price and rating, each as if its own filter were not applied. */
+  facets: { kind: Partial<Record<Kind, number>>; category: Record<string, number>; price: Record<string, number>; rating: Record<string, number> }
 }
 
 export interface PublishReq {
+  kind: Kind
   tool: string
   title: string
   description?: string
@@ -63,28 +87,27 @@ export interface PublishReq {
   currency?: string
   recipient?: string
   public?: boolean
-  kind: Kind
   docs?: string
 }
 
 export type ListingPatch = Partial<Omit<PublishReq, 'tool' | 'kind'>>
 
-/** SPECIFIED: GET /v1/marketplace/shop — every public listing, any org, no sign-in. */
+/** GET /v1/marketplace/shop — every public listing, any org, no sign-in. 48 a page by default, 200 at most. */
 export const shop = (q: { q?: string; kind?: Kind | ''; limit?: number; offset?: number }) =>
   request<Shop>({ path: '/v1/marketplace/shop', query: q, anonymous: true })
 
-/** SPECIFIED: GET /v1/marketplace/shop/{id}. */
+/** GET /v1/marketplace/shop/{id}. */
 export const shopListing = (id: string) =>
   request<ShopListing>({ path: `/v1/marketplace/shop/${encodeURIComponent(id)}`, anonymous: true })
 
 /** GET /v1/marketplace/listings — the caller org's own listings. */
 export const ownListings = () => request<{ listings: Listing[] }>({ path: '/v1/marketplace/listings' })
 
-/** POST /v1/marketplace/listings → 201. */
+/** POST /v1/marketplace/listings → 201. An org admin publishes. */
 export const publish = (req: PublishReq) =>
   request<Listing>({ method: 'POST', path: '/v1/marketplace/listings', body: req })
 
-/** SPECIFIED: PATCH /v1/marketplace/listings/{id}. */
+/** PATCH /v1/marketplace/listings/{id}. */
 export const updateListing = (id: string, patch: ListingPatch) =>
   request<Listing>({ method: 'PATCH', path: `/v1/marketplace/listings/${encodeURIComponent(id)}`, body: patch })
 
@@ -92,7 +115,7 @@ export const updateListing = (id: string, patch: ListingPatch) =>
 export const unpublish = (id: string) =>
   request<void>({ method: 'DELETE', path: `/v1/marketplace/listings/${encodeURIComponent(id)}` })
 
-/** POST /v1/marketplace/install — activates one tool for the caller's org. */
+/** POST /v1/marketplace/install — activates one tool for the caller's org and project. */
 export const install = (tool: string) =>
   request<{ tool: string; installed: boolean }>({ method: 'POST', path: '/v1/marketplace/install', body: { tool } })
 
@@ -100,23 +123,39 @@ export const install = (tool: string) =>
 export const uninstall = (tool: string) =>
   request<{ tool: string; installed: boolean }>({ method: 'POST', path: '/v1/marketplace/uninstall', body: { tool } })
 
-// ── jobs: the on-chain escrow (SPECIFIED) ────────────────────────────────────
+// ── jobs: one org hires another, paid once over x402 at release ─────────────
 
-export type JobStatus = 'open' | 'accepted' | 'delivered' | 'released' | 'disputed'
+export type JobStatus = 'quoted' | 'open' | 'accepted' | 'delivered' | 'released' | 'disputed' | 'declined' | 'cancelled' | 'refunded'
+
+/** What a payment is for, as the economic event says it. */
+export type Category = 'service' | 'goods' | 'transfer' | 'royalty'
 
 export interface Job {
   id: string
+  /** Empty for a direct offer. */
   listing: string
   title: string
   buyerOrg: string
   sellerOrg: string
   amount: string
   currency: string
+  category: Category
   status: JobStatus
+  /** An unpaid ending (declined, cancelled, refunded) waiting on the rail to return the money; the job takes no other step. */
+  ending?: 'declined' | 'cancelled' | 'refunded'
   brief: string
-  delivery?: { note: string; url?: string; at: number }
-  dispute?: { reason: string; at: number }
-  escrow: { network: string; contract: string; txHash?: string }
+  /** ISO 3166-1 alpha-2, where the work is performed. */
+  performed?: string
+  /** When delivery must land by. */
+  deadline?: number
+  /** Seconds the buyer has after delivery to release or dispute. */
+  review: number
+  /** The latest clearance: GET /v1/principal/clearance/{id}. */
+  clearance: string
+  delivery?: { note: string; url?: string; hash: string; at: number }
+  /** contested: the clock's own dispute, raised when the payment stopped clearing. */
+  dispute?: { reason: string; by: string; at: number; contested?: boolean }
+  escrow: { rail: 'x402' | 'chain'; network: string; contract: string; payTo?: string; txHash?: string }
   history: { status: JobStatus; at: number; by: string }[]
   createdAt: number
   updatedAt: number
@@ -125,22 +164,118 @@ export interface Job {
 export interface HireReq {
   listing: string
   brief: string
+  /** U.S. dollars to the cent. */
   amount: string
-  /** The buyer org's wallet that funds the escrow. */
+  category?: Category
+  /** ISO 3166-1 alpha-2; it decides whether a foreign seller's pay is U.S.-source. */
+  performed?: string
+  /** When delivery must land by, unix seconds. */
+  deadline: number
+  /** The buyer org's wallet the payment is signed from. */
   wallet: string
 }
 
-export const hire = (req: HireReq) => request<Job>({ method: 'POST', path: '/v1/marketplace/jobs', body: req })
+/** What the buyer's wallet is: its id, to sign with, and its address, which signs. */
+export interface Payer {
+  id: string
+  address: string
+}
+
+/** What a hire needs of the authorization past its deadline: 3 days' review, 14 for a ruling, 1 for the clock (jobs.go). */
+export const TAIL = (3 + 14 + 1) * 86_400
+
+/**
+ * POST /v1/marketplace/jobs, both steps. Sent without a payment, cloud clears the
+ * terms and answers 402 with the x402 terms to sign for the job; the buyer's
+ * wallet signs them on the platform, and the same request goes again with the
+ * signed payment, which opens the job (201) with the amount set aside in that
+ * wallet. The authorization stays valid through the deadline, the review window,
+ * a ruling on a dispute and a day for the clock, as cloud requires.
+ */
+export async function hire(req: HireReq, from: Payer): Promise<Job> {
+  const body = { listing: req.listing, brief: req.brief, amount: req.amount, category: req.category, performed: req.performed, deadline: req.deadline, wallet: req.wallet }
+  let required
+  try {
+    return await request<Job>({ method: 'POST', path: '/v1/marketplace/jobs', body })
+  } catch (e) {
+    if (!(e instanceof Refusal) || e.status !== 402) throw e
+    required = terms(e.problem)
+    if (!required) throw e
+  }
+  const accepted = payable(required)
+  if (!accepted) throw new Error('The payment terms name no chain this storefront can sign for.')
+  const now = Math.floor(Date.now() / 1000)
+  const a: Authorization = {
+    from: from.address,
+    to: accepted.payTo,
+    value: accepted.amount,
+    validAfter: String(now - 600),
+    validBefore: String(req.deadline + TAIL + 3600),
+    nonce: nonce(),
+  }
+  const signed = await sign(from.id, digest(accepted, a))
+  if (signed.address.toLowerCase() !== from.address.toLowerCase()) throw new Error(`Wallet ${from.id} signed as ${signed.address}, not ${from.address}.`)
+  return request<Job>({ method: 'POST', path: '/v1/marketplace/jobs', body: { ...body, payment: payment(required, accepted, a, signed.signature) } })
+}
 
 export const jobs = (role: 'buyer' | 'seller') =>
   request<{ jobs: Job[] }>({ path: '/v1/marketplace/jobs', query: { role } })
 
 export const job = (id: string) => request<Job>({ path: `/v1/marketplace/jobs/${encodeURIComponent(id)}` })
 
-export type JobAct = 'accept' | 'deliver' | 'release' | 'dispute'
+export type JobAct = 'accept' | 'decline' | 'cancel' | 'deliver' | 'release' | 'dispute' | 'refund'
 
 export const actOnJob = (id: string, act: JobAct, body?: { note?: string; url?: string; reason?: string }) =>
   request<Job>({ method: 'POST', path: `/v1/marketplace/jobs/${encodeURIComponent(id)}/${act}`, body: body ?? {} })
+
+/** POST /v1/marketplace/jobs/{id}/feedback → 201: rate the other party of a settled job, once. */
+export const rate = (id: string, rating: number, comment: string) =>
+  request<{ id: string; rating: number }>({ method: 'POST', path: `/v1/marketplace/jobs/${encodeURIComponent(id)}/feedback`, body: { rating, comment } })
+
+// ── the seller: onboarding, payout wallet, earnings ─────────────────────────
+
+/** GET /v1/marketplace/seller — where the caller's org stands as a seller, in one read. An org admin reads it. */
+export interface Onboarding {
+  org: string
+  ready: boolean
+  /** identity, sanctions, tax_form, tax_invalid, payout. */
+  missing: string[]
+  identity: string
+  entity?: string
+  tax?: { form: string; certified: boolean; valid: boolean; expires?: number }
+  sanctions: string
+  sanctionsReason: string
+  payout: { wallet?: string; address?: string; bound: boolean; boundAt?: number }
+  earnings: {
+    year: number
+    currency: string
+    /** Every settled payment to the org that year, from the economic events. */
+    gross: string
+    payments: number
+    byRail: Record<string, string>
+    /** True when the events were too many to read in one answer: gross is a floor. */
+    partial?: boolean
+  }
+  received: { id: string; payer: string; kind: string; year: number; corrected?: boolean; superseded?: boolean; furnished: number }[]
+  sources: { app: string; status: string }[]
+}
+
+export const seller = (year?: number) => request<Onboarding>({ path: '/v1/marketplace/seller', query: { year } })
+
+/**
+ * Bind the org's payout wallet: cloud issues a challenge naming the wallet's
+ * address, the wallet signs its digest on the platform, and cloud checks the
+ * signature is that address's (POST /v1/marketplace/seller/payout[/verify]).
+ */
+export async function bindPayout(wallet: string): Promise<Onboarding['payout']> {
+  const c = await request<{ wallet: string; address: string; message: string; digest: string; expires: number }>({
+    method: 'POST',
+    path: '/v1/marketplace/seller/payout',
+    body: { wallet },
+  })
+  const signed = await sign(wallet, c.digest)
+  return request<Onboarding['payout']>({ method: 'POST', path: '/v1/marketplace/seller/payout/verify', body: { signature: signed.signature } })
+}
 
 // ── catalogs ─────────────────────────────────────────────────────────────────
 
@@ -295,19 +430,14 @@ export const startKyc = () =>
     body: {},
   })
 
-/** How a storefront payment moves: per call over x402, or into on-chain escrow. */
-export type Rail = 'x402' | 'escrow'
-
-/** The rail name clearance knows each storefront rail by. */
-export const RAIL: Record<Rail, string> = { x402: 'x402', escrow: 'chain' }
-
 /** POST /v1/principal/clearance — a payment the caller means to make. */
 export interface ClearIn {
   /** The org to be paid. */
   payee: string
-  /** Gross USD, "1250.00". */
+  /** Gross USD in whole cents, "1250.00". */
   amount: string
   category?: 'services' | 'attorney' | 'rents' | 'royalties' | 'other' | 'merchandise'
+  /** ledger (the default), x402 or chain. */
   rail?: string
   /** ISO 3166-1 alpha-2 where the service is performed. */
   performed?: string
@@ -319,7 +449,9 @@ export interface Clearance {
   payer: string
   payee: string
   amount: string
+  category: string
   rail: string
+  performed?: string
   allowed: boolean
   /** What the payer may treat the payee as: us, foreign or unknown. */
   status: string
@@ -353,6 +485,14 @@ export const createAccount = (name: string) =>
 
 export const createWallet = (req: { accountId: string; name: string; custody: 'mpc' | 'kms' }) =>
   request<Wallet>({ method: 'POST', path: '/v1/wallet', body: req })
+
+/** POST /v1/wallet/{id}/sign — the org wallet signs a 32-byte digest, verbatim. */
+export const sign = (wallet: string, hash: string) =>
+  request<{ address: string; digest: string; signature: string; walletId: string }>({
+    method: 'POST',
+    path: `/v1/wallet/${encodeURIComponent(wallet)}/sign`,
+    body: { digest: hash },
+  })
 
 // ── tax ──────────────────────────────────────────────────────────────────────
 
@@ -462,17 +602,20 @@ export const statementPdf = (id: string) => blob({ path: `/v1/tax/inbox/${encode
 
 export interface Receipt {
   id: string
+  /** What the payment bought: a tool's resource, or job:<id> for a job paid at release. */
   resource: string
   payer: string
+  from?: string
   payee: string
   payeeOrg: string
   amount: string
   network: string
   settledVia: 'ledger' | 'chain'
   txHash?: string
+  category?: string
   settledAt: number
 }
 
-/** SPECIFIED: GET /v1/x402/settlements?role=payee — what this org was paid. */
+/** GET /v1/x402/settlements?role=payee — what this org was paid, newest first. */
 export const settlements = (role: 'payer' | 'payee', year?: number) =>
   request<{ settlements: Receipt[] }>({ path: '/v1/x402/settlements', query: { role, year } })

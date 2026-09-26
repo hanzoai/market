@@ -126,7 +126,7 @@ function Shown({ d }: { d: Detail }) {
       </XStack>
 
       <Section title="Reputation">
-        <Rep of={d.reputation} kind={d.item.kind} />
+        <Rep d={d} />
       </Section>
 
       <Section title="Use it" says="The same action from the docs, a terminal, or an agent.">
@@ -144,11 +144,13 @@ function Shown({ d }: { d: Detail }) {
   )
 }
 
-function Rep({ of, kind }: { of: Reputation | null; kind: Detail['item']['kind'] }) {
+function Rep({ d }: { d: Detail }) {
+  const of: Reputation | null = d.reputation
+  const hired = d.get.how === 'checkout' && d.get.hire
   if (!of) {
     return (
       <Text fontSize="$2" color="$quiet">
-        {kind === 'skill' ? 'Published by Hanzo; no marketplace reviews.' : 'No reputation yet.'}
+        {d.item.kind === 'skill' ? 'Published by Hanzo; no marketplace reviews.' : 'No reputation yet.'}
       </Text>
     )
   }
@@ -169,9 +171,9 @@ function Rep({ of, kind }: { of: Reputation | null; kind: Detail['item']['kind']
         }
         says={`${of.reviews} review${of.reviews === 1 ? '' : 's'}`}
       />
-      <Count of={of.installs} says={kind === 'app' ? 'Stars' : 'Installs'} />
-      {kind === 'agent' ? <Count of={of.jobs.completed} says="Jobs completed" /> : null}
-      {kind === 'agent' ? <Count of={of.jobs.disputed} says="Jobs disputed" /> : null}
+      {hired ? null : <Count of={of.installs} says={d.get.how === 'open' ? 'Stars' : 'Installs'} />}
+      {hired ? <Count of={of.jobs.completed} says="Jobs completed" /> : null}
+      {hired ? <Count of={of.jobs.disputed} says="Jobs disputed" /> : null}
     </XStack>
   )
 }
@@ -199,18 +201,13 @@ function Obtain({ d }: { d: Detail }) {
   if (get.how === 'checkout') {
     return (
       <YStack gap="$2">
-        {get.rails.includes('escrow') ? (
-          <Act loud onPress={() => go(`/checkout/${encodeURIComponent(get.listing)}?rail=escrow`)}>
-            Hire
-          </Act>
-        ) : null}
-        {get.rails.includes('x402') ? (
-          <Act loud={!get.rails.includes('escrow')} onPress={() => go(`/checkout/${encodeURIComponent(get.listing)}?rail=x402`)}>
-            {get.rails.includes('escrow') ? 'Pay per call instead' : 'Buy'}
-          </Act>
-        ) : null}
+        <Act loud onPress={() => go(`/checkout/${encodeURIComponent(get.listing)}`)}>
+          {get.hire ? 'Hire' : 'Buy'}
+        </Act>
         <Text fontSize="$1" color="$quiet">
-          Checkout runs clearance first and tells you what, if anything, is needed.
+          {get.hire
+            ? 'Checkout runs clearance first and tells you what, if anything, is needed.'
+            : 'Installed for your organization; each call settles over x402.'}
         </Text>
       </YStack>
     )

@@ -1,13 +1,16 @@
 // Who is signed in, and the org they act as. hanzo.id is the only issuer and
 // @hanzo/iam is the only client: `login()` is authorization-code + PKCE (S256)
 // by top-level redirect, and the SDK owns the tokens. This file adds nothing to
-// auth — it reads the session and names the org.
+// auth — it reads the session and names the org. Signed in is the SDK's word
+// (a token that is valid or was refreshed), withdrawn the moment the gateway
+// refuses it (401): a token merely left in storage is not a session.
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { IamProvider, useIam } from '@hanzo/iam/react'
 
 import { iam } from '~/lib/api'
-import { hasSession, org as chosenOrg, orgs as tokenOrgs, own, subject, work } from '~/lib/token'
+import { LAPSED } from '~/lib/http'
+import { org as chosenOrg, orgs as tokenOrgs, own, subject, work } from '~/lib/token'
 
 export interface Session {
   loading: boolean
@@ -38,8 +41,16 @@ export function destination(): string {
 }
 
 function Bind({ children }: { children: ReactNode }) {
-  const { isLoading, isAuthenticated, user, login, logout } = useIam()
+  const { isLoading, isAuthenticated, accessToken, user, login, logout } = useIam()
   const [picked, setPicked] = useState<string | null>(() => chosenOrg())
+  // The token the gateway refused; a new one (a refresh, a sign-in) is a new session.
+  const [refused, setRefused] = useState<string | null>(null)
+
+  useEffect(() => {
+    const lapse = () => setRefused(accessToken ?? '')
+    window.addEventListener(LAPSED, lapse)
+    return () => window.removeEventListener(LAPSED, lapse)
+  }, [accessToken])
 
   useEffect(() => {
     if (isLoading) return
@@ -52,7 +63,7 @@ function Bind({ children }: { children: ReactNode }) {
     const email = u?.email ?? null
     return {
       loading: isLoading,
-      signedIn: isAuthenticated || hasSession(),
+      signedIn: isAuthenticated && refused !== (accessToken ?? ''),
       name: u?.displayName || u?.name || (email ? email.split('@')[0] : ''),
       email,
       org: picked,
@@ -70,7 +81,7 @@ function Bind({ children }: { children: ReactNode }) {
       },
       signOut: () => void logout(),
     }
-  }, [isLoading, isAuthenticated, user, picked, login, logout])
+  }, [isLoading, isAuthenticated, accessToken, refused, user, picked, login, logout])
 
   return <Ctx.Provider value={session}>{children}</Ctx.Provider>
 }

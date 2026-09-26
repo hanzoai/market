@@ -1,20 +1,24 @@
-// What a seller earned, from what the platform answers: x402 receipts paid to
-// the org, and escrow jobs it was hired for.
+// What a seller earned, from what the platform answers: the year's gross from
+// its economic events (GET /v1/marketplace/seller), the x402 receipts paid to the
+// org split by what they bought, and the jobs whose amount is still set aside.
+// A figure is drawn only from sources that answered: a source that did not is
+// a figure the page does not have, never a zero.
 
+import { held } from '~/lib/job'
 import type { Job, Receipt, Statement } from '~/lib/market'
 import { sum } from '~/lib/money'
 
-const inYear = (at: number, year: number) => new Date(at * 1000).getUTCFullYear() === year
+/** A receipt for a job, paid at release; anything else was paid per call. */
+export const forJob = (r: Pick<Receipt, 'resource'>) => r.resource.startsWith('job:')
 
-/**
- * Totals for `year`: per-call settlements, escrow released that year, and what
- * is still held in escrow (not yet released, whatever the year).
- */
-export function totals(paid: Receipt[], work: Job[], year: number): { x402: string; escrow: string; held: string; all: string } {
-  const x402 = sum(paid.filter((r) => inYear(r.settledAt, year)).map((r) => r.amount))
-  const escrow = sum(work.filter((j) => j.status === 'released' && inYear(j.updatedAt, year)).map((j) => j.amount))
-  const held = sum(work.filter((j) => j.status === 'open' || j.status === 'accepted' || j.status === 'delivered').map((j) => j.amount))
-  return { x402, escrow, held, all: sum([x402, escrow]) }
+/** The x402 receipts, split: paid per call, and paid for jobs. */
+export function split(paid: Receipt[]): { perCall: string; jobs: string } {
+  return { perCall: sum(paid.filter((r) => !forJob(r)).map((r) => r.amount)), jobs: sum(paid.filter(forJob).map((r) => r.amount)) }
+}
+
+/** What buyers have set aside for this seller's open work: not paid yet, and not the seller's until release. */
+export function setAside(work: Job[]): string {
+  return sum(work.filter(held).map((j) => j.amount))
 }
 
 /** The box a 1099 leads with: box 1 (nonemployee compensation on a 1099-NEC, rents on a 1099-MISC). */

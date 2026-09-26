@@ -1,5 +1,7 @@
 // Seller onboarding. The org is the economic principal: it is verified, it files
-// the tax form, it is paid into its wallet, and it receives the 1099s.
+// the tax form, it proves the payout wallet it is paid into, and it receives the
+// 1099s. Every read here is the acting org's: switching org re-reads them all,
+// and nothing one org answered is ever shown as another's.
 
 import { useState } from 'react'
 import { Text, XStack, YStack } from '@hanzo/ui'
@@ -9,15 +11,18 @@ import { web } from '~/lib/api'
 import { notServed } from '~/lib/http'
 import { todos } from '~/lib/clearance'
 import {
+  bindPayout,
   certifyTax,
   createAccount,
   createWallet,
   principal,
   saveTaxProfile,
+  seller,
   startKyc,
   taxProfile,
   wallets,
   type Classification,
+  type Onboarding,
   type Principal,
   type TaxForm,
   type TaxProfile,
@@ -74,11 +79,12 @@ function Inner() {
   const who = useRead(() => principal(), [session.org])
   const tax = useRead(() => taxProfile(), [session.org])
   const mine = useRead(() => wallets(), [session.org])
+  const standing = useRead(() => seller(), [session.org])
 
   const identity = who.it?.identity.status ?? (notServed(who.status) ? 'not live' : '…')
   const form = who.it?.tax ?? (tax.it ? { valid: tax.it.valid, certified: tax.it.certification.status === 'certified' } : null)
-  const taxState = form ? (form.valid ? 'valid' : form.certified ? 'certified' : 'on file') : tax.it === null && !tax.loading ? 'none' : '…'
-  const funded = (mine.it?.wallets.length ?? 0) > 0
+  const taxState = form ? (form.valid ? 'valid' : form.certified ? 'certified' : 'on file') : notServed(tax.status) ? 'none' : '…'
+  const bound = standing.it?.payout.bound ?? false
 
   return (
     <Page
@@ -92,7 +98,7 @@ function Inner() {
           { label: 'Signed in', stage: 'done' },
           { label: `Identity: ${identity}`, stage: identity === 'verified' || identity === 'reviewer_confirmed' ? 'done' : 'current' },
           { label: `Tax form: ${taxState}`, stage: form?.valid ? 'done' : 'current' },
-          { label: funded ? 'Wallet ready' : 'Wallet', stage: funded ? 'done' : 'todo' },
+          { label: bound ? 'Payout wallet: proved' : 'Payout wallet', stage: bound ? 'done' : 'todo' },
         ]}
       />
 
@@ -126,8 +132,8 @@ function Inner() {
         <Tax read={tax} onSaved={who.again} />
       </Section>
 
-      <Section title="Wallet" says="Sales settle into a wallet your organization holds: x402 payments per call, and escrow when a buyer releases a job. Each listing names the wallet it is paid into.">
-        <Payout wallets={mine} />
+      <Section title="Payout wallet" says="Sales settle into a wallet your organization holds: per call over x402, and for a job when the buyer releases it. The wallet signs once to prove it is yours; jobs are paid into it.">
+        <Payout wallets={mine} standing={standing} />
       </Section>
     </Page>
   )
@@ -431,14 +437,20 @@ function TaxForm({ onSaved }: { onSaved: () => void }) {
   )
 }
 
-function Payout({ wallets: read }: { wallets: Read<{ wallets: Wallet[] }> }) {
+function Payout({ wallets: read, standing }: { wallets: Read<{ wallets: Wallet[] }>; standing: Read<Onboarding> }) {
   const { busy, failed, status, run } = useRun()
   if (read.failed) return <Failed what="load your wallets" why={read.failed} />
   if (!read.it) return <Nothing says="Loading…" />
   const list = read.it.wallets
+  const payout = standing.it?.payout ?? null
 
   return (
     <Panel>
+      {notServed(standing.status) ? (
+        <Pending what="Payout binding is not live yet" says="api.hanzo.ai does not answer GET /v1/marketplace/seller yet." />
+      ) : standing.failed ? (
+        <Failed what="load where your organization stands as a seller" why={standing.failed} />
+      ) : null}
       {list.length ? (
         list.map((w) => (
           <XStack key={w.id} items="center" gap="$3" flexWrap="wrap" py="$1" data-wallet="">
@@ -448,6 +460,13 @@ function Payout({ wallets: read }: { wallets: Read<{ wallets: Wallet[] }> }) {
             <Text fontSize="$1" color="$quiet" fontFamily="$mono" numberOfLines={1}>
               {w.address}
             </Text>
+            {payout?.bound && payout.wallet === w.id ? (
+              <Mark tone="up" says="Payouts go here" />
+            ) : payout ? (
+              <Act disabled={busy} onPress={() => void run(async () => (await bindPayout(w.id), standing.again()))} label={`Use ${w.name} for payouts`}>
+                Use for payouts
+              </Act>
+            ) : null}
           </XStack>
         ))
       ) : (

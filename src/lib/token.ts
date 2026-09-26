@@ -57,11 +57,6 @@ export function subject(): string | undefined {
   return typeof sub === 'string' && sub ? sub : undefined
 }
 
-/** Whether this browser holds a session. */
-export function hasSession(): boolean {
-  return Boolean(bearer())
-}
-
 /**
  * Bind this browser's selections to one person: when a different subject
  * arrives (or nobody — a sign-out), the last person's org choice goes before

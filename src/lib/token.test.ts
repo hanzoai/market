@@ -1,4 +1,4 @@
-import { bearer, claims, hasSession, org, orgs, own, subject, work } from '~/lib/token'
+import { bearer, claims, org, orgs, own, subject, work } from '~/lib/token'
 
 const jwt = (payload: unknown) => `h.${btoa(JSON.stringify(payload)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')}.s`
 
@@ -9,14 +9,13 @@ describe('session token', () => {
     expect(bearer()).toBeNull()
     expect(claims()).toBeNull()
     expect(subject()).toBeUndefined()
-    expect(hasSession()).toBe(false)
     expect(orgs()).toEqual([])
     expect(org()).toBeNull()
   })
 
   it('reads the claims the stored token carries', () => {
     localStorage.setItem('hanzo_iam_access_token', jwt({ sub: 'acme/ada', orgs: [{ org: 'acme' }, 'globex', { org: 'acme' }, { nope: 1 }] }))
-    expect(hasSession()).toBe(true)
+    expect(bearer()).not.toBeNull()
     expect(subject()).toBe('acme/ada')
     expect(orgs()).toEqual(['acme', 'globex'])
     expect(org()).toBe('acme')

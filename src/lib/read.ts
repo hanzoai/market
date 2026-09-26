@@ -37,19 +37,20 @@ export function useRead<T>(get: (() => Promise<T>) | null, deps: unknown[]): Rea
   const on = Boolean(get)
 
   useEffect(() => {
-    if (!on) return
     let live = true
-    setAsking(true)
-    run()
-      .then((got) => {
-        if (live) setAnswer({ of: run, it: got, failed: null, status: null })
-      })
-      .catch((e: unknown) => {
-        if (live) setAnswer({ of: run, it: null, failed: why(e), status: e instanceof Refusal ? e.status : null })
-      })
-      .finally(() => {
-        if (live) setAsking(false)
-      })
+    if (on) {
+      setAsking(true)
+      void run()
+        .then((got) => {
+          if (live) setAnswer({ of: run, it: got, failed: null, status: null })
+        })
+        .catch((e: unknown) => {
+          if (live) setAnswer({ of: run, it: null, failed: why(e), status: e instanceof Refusal ? e.status : null })
+        })
+        .finally(() => {
+          if (live) setAsking(false)
+        })
+    }
     return () => {
       live = false
     }

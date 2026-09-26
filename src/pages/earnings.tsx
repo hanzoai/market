@@ -1,14 +1,17 @@
-// What the org earned — x402 settlements paid to it and escrow released to it —
-// and the 1099s it received.
+// What the org earned — its gross for the year, the x402 receipts paid to it per
+// call and for jobs, what buyers have set aside for its open work — and the 1099s
+// it received. A figure whose source has not answered is shown as pending, never
+// as a zero.
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Text, XStack, YStack } from '@hanzo/ui'
 
 import { notServed, why } from '~/lib/http'
-import { lead, totals } from '~/lib/earnings'
-import { jobs, settlements, statementPdf, taxInbox, type Statement } from '~/lib/market'
+import { lead, setAside, split } from '~/lib/earnings'
+import { words } from '~/lib/job'
+import { jobs, seller, settlements, statementPdf, taxInbox, type Statement } from '~/lib/market'
 import { cents, usd } from '~/lib/money'
-import { useRead } from '~/lib/read'
+import { useRead, type Read } from '~/lib/read'
 import { Gate } from '~/gate'
 import { SellNav } from '~/pages/setup'
 import { useSession } from '~/session'
@@ -30,19 +33,19 @@ const YEARS = (() => {
 function Inner() {
   const session = useSession()
   const [year, setYear] = useState(YEARS[0])
+  const standing = useRead(() => seller(Number(year)), [year, session.org])
   const paid = useRead(() => settlements('payee', Number(year)).then((r) => r.settlements), [year, session.org])
   const work = useRead(() => jobs('seller').then((r) => r.jobs), [session.org])
   const forms = useRead(() => taxInbox(Number(year)).then((r) => r.data), [year, session.org])
-  const t = totals(paid.it ?? [], work.it ?? [], Number(year))
 
   return (
-    <Page eyebrow="Sell" title="Earnings" says="Paid per call over x402, and by escrow when buyers release a job." beside={<Choice label="Year" value={year} set={setYear} of={YEARS.map((y) => ({ value: y, label: y }))} />}>
+    <Page eyebrow="Sell" title="Earnings" says="Paid per call over x402, and for jobs when buyers release them." beside={<Choice label="Year" value={year} set={setYear} of={YEARS.map((y) => ({ value: y, label: y }))} />}>
       <SellNav />
       <XStack gap="$3" flexWrap="wrap">
-        <Count of={usd(t.all)} says={`Earned in ${year}`} />
-        <Count of={usd(t.x402)} says="Per call (x402)" />
-        <Count of={usd(t.escrow)} says="Released from escrow" />
-        <Count of={usd(t.held)} says="Held in escrow" />
+        <Tile read={standing} says={`Earned in ${year}`} of={(s) => `${s.earnings.partial ? 'at least ' : ''}${usd(s.earnings.gross, s.earnings.currency)}`} />
+        <Tile read={paid} says="Per call (x402)" of={(p) => usd(split(p).perCall)} />
+        <Tile read={paid} says="Paid for jobs" of={(p) => usd(split(p).jobs)} />
+        <Tile read={work} says="Set aside for your open jobs" of={(w) => usd(setAside(w))} />
       </XStack>
 
       <Section title="Settlements" says="Each x402 payment your organization received.">
@@ -74,7 +77,7 @@ function Inner() {
         )}
       </Section>
 
-      <Section title="Escrow" says="Jobs you were hired for.">
+      <Section title="Jobs" says="Work you were hired for.">
         {notServed(work.status) ? (
           <Pending what="Jobs are not live yet" says="api.hanzo.ai does not answer GET /v1/marketplace/jobs yet." />
         ) : work.failed ? (
@@ -93,7 +96,7 @@ function Inner() {
                 <Text fontSize="$2" color="$ink">
                   {usd(j.amount, j.currency)}
                 </Text>
-                <Mark tone={j.status === 'released' ? 'up' : j.status === 'disputed' ? 'act' : 'moving'} says={j.status} />
+                <Mark tone={j.status === 'released' ? 'up' : j.status === 'disputed' ? 'act' : 'moving'} says={words(j).split(' — ')[0]} />
               </Row>
             ))}
           </YStack>
@@ -104,6 +107,17 @@ function Inner() {
         <Forms read={forms} year={year} />
       </Section>
     </Page>
+  )
+}
+
+/** One figure, drawn only once its source answered; until then it says why it has none. */
+function Tile<T>({ read, says, of }: { read: Read<T>; says: string; of: (it: T) => ReactNode }) {
+  if (read.it !== null) return <Count of={of(read.it)} says={says} />
+  const state = notServed(read.status) ? 'not live yet' : read.failed ? 'unavailable' : 'loading'
+  return (
+    <YStack flex={1} minW={160} data-pending="">
+      <Count of="—" says={`${says} · ${state}`} />
+    </YStack>
   )
 }
 

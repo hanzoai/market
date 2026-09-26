@@ -1,9 +1,14 @@
 // One catalog out of four sources. Each source answers its own shape; this file
 // is the only place those shapes become an `Item`, so browse, search, facets and
 // the listing page all read one thing.
+//
+// Each source is a shelf, read from the server a page at a time. The catalog is
+// the shelves end to end — seller listings first, then the directories in the
+// order people shop them — and its counts are the servers' totals, never the
+// number of cards loaded so far.
 
-import type { AppEntry, Kind, McpListing, ShopListing, SkillEntry } from '~/lib/market'
-import { free, perCall } from '~/lib/money'
+import { KINDS, type AppEntry, type Kind, type McpListing, type ShopListing, type SkillEntry } from '~/lib/market'
+import { each, free } from '~/lib/money'
 
 export interface Item {
   /** Unique across sources. */
@@ -13,23 +18,34 @@ export interface Item {
   href: string
   title: string
   summary: string
-  /** Who offers it: a publisher org, a vendor, or Hanzo. */
+  /** Who offers it: a seller org, a vendor, or Hanzo. */
   by: string
   /** A price line, or null when free. */
   price: string | null
-  /** A published marketplace listing (sold by an org) or a directory entry. */
-  listed: boolean
 }
 
 export const LABEL: Record<Kind, { one: string; many: string }> = {
   agent: { one: 'Agent', many: 'Agents' },
+  persona: { one: 'Persona', many: 'Personas' },
   app: { one: 'App', many: 'Apps' },
   skill: { one: 'Skill', many: 'Skills' },
   mcp: { one: 'MCP server', many: 'MCP servers' },
+  tool: { one: 'Tool', many: 'Tools' },
 }
 
 /** Where each type is browsed. */
-export const PATH: Record<Kind, string> = { agent: '/agents', app: '/apps', skill: '/skills', mcp: '/mcp' }
+export const PATH: Record<Kind, string> = {
+  agent: '/agents',
+  persona: '/personas',
+  app: '/apps',
+  skill: '/skills',
+  mcp: '/mcp',
+  tool: '/tools',
+}
+
+export function isKind(v: unknown): v is Kind {
+  return typeof v === 'string' && (KINDS as readonly string[]).includes(v)
+}
 
 export function fromListing(l: ShopListing): Item {
   return {
@@ -38,9 +54,8 @@ export function fromListing(l: ShopListing): Item {
     href: `/l/${encodeURIComponent(l.id)}`,
     title: l.title,
     summary: l.description,
-    by: l.publisherName || l.publisherOrg,
-    price: free(l.price) ? null : perCall(l.price, l.kind),
-    listed: true,
+    by: l.seller.org,
+    price: free(l.price) ? null : each(l.price, l.kind),
   }
 }
 
@@ -53,7 +68,6 @@ export function fromApp(e: AppEntry): Item {
     summary: e.description ?? '',
     by: e.org,
     price: null,
-    listed: false,
   }
 }
 
@@ -66,7 +80,6 @@ export function fromSkill(s: SkillEntry): Item {
     summary: s.description,
     by: 'Hanzo',
     price: null,
-    listed: false,
   }
 }
 
@@ -79,7 +92,6 @@ export function fromMcp(m: McpListing): Item {
     summary: m.description,
     by: m.vendor,
     price: null,
-    listed: false,
   }
 }
 
@@ -91,33 +103,55 @@ export function matches(item: Item, q: string): boolean {
   return words.every((w) => hay.includes(w))
 }
 
-/**
- * The order kinds are shown in when nothing narrows them: what people hire and
- * run first, then the skills directory, which is hundreds of per-operation
- * entries and would otherwise fill every page ahead of them.
- */
-const RANK: Record<Kind, number> = { agent: 0, app: 1, mcp: 2, skill: 3 }
+export type Source = 'listings' | 'apps' | 'mcp' | 'skills'
 
-/** Listings first (they are what sellers publish), then by kind, then by title; one entry per key. */
-export function merge(parts: Item[][]): Item[] {
-  const seen = new Set<string>()
-  const out: Item[] = []
-  for (const item of parts.flat()) {
-    if (seen.has(item.key)) continue
-    seen.add(item.key)
-    out.push(item)
-  }
-  return out.toSorted(
-    (a, b) => Number(b.listed) - Number(a.listed) || RANK[a.kind] - RANK[b.kind] || a.title.localeCompare(b.title),
-  )
+/** One source, as far as it has been read. */
+export interface Shelf {
+  source: Source
+  /** The one kind a directory holds; null for seller listings, which hold every kind. */
+  kind: Kind | null
+  /** What has been read, in the server's order. */
+  items: Item[]
+  /** How many the source holds for this search. */
+  total: number
 }
 
-export function facets(items: Item[]): Record<Kind, number> {
-  const out: Record<Kind, number> = { agent: 0, app: 0, skill: 0, mcp: 0 }
-  for (const item of items) out[item.kind] += 1
+/** The order shelves stand in: what sellers publish, then what people hire and run, then the skills directory. */
+const ORDER: Source[] = ['listings', 'apps', 'mcp', 'skills']
+
+/** The shelves a view shows, in order: every shelf for all types, else the listings and that type's directory. */
+export function shown(shelves: Shelf[], type: Kind | ''): Shelf[] {
+  return shelves.filter((s) => !type || s.kind === null || s.kind === type).toSorted((a, b) => ORDER.indexOf(a.source) - ORDER.indexOf(b.source))
+}
+
+/** The first `want` cards of the shelves end to end, stopping where a shelf has not been read that far. */
+export function cards(shelves: Shelf[], want: number): Item[] {
+  const out: Item[] = []
+  for (const s of shelves) {
+    out.push(...s.items)
+    if (s.items.length < s.total || out.length >= want) break
+  }
+  return out.slice(0, want)
+}
+
+/** How many cards the shelves hold in all. */
+export const held = (shelves: Shelf[]) => shelves.reduce((n, s) => n + s.total, 0)
+
+/** The reads that fill the first `want` cards: for each shelf short of its share, where to start and how many. */
+export function wanted(shelves: Shelf[], want: number): { source: Source; offset: number; limit: number }[] {
+  const out: { source: Source; offset: number; limit: number }[] = []
+  let before = 0
+  for (const s of shelves) {
+    const share = Math.min(s.total, Math.max(0, want - before))
+    if (s.items.length < share) out.push({ source: s.source, offset: s.items.length, limit: share - s.items.length })
+    before += s.total
+  }
   return out
 }
 
-export function isKind(v: unknown): v is Kind {
-  return v === 'agent' || v === 'app' || v === 'skill' || v === 'mcp'
+/** Cards per type: the shop's own counts for listings, and each directory's total. */
+export function tally(listed: Partial<Record<Kind, number>> | null, shelves: Shelf[]): Record<Kind, number> {
+  const out = Object.fromEntries(KINDS.map((k) => [k, listed?.[k] ?? 0])) as Record<Kind, number>
+  for (const s of shelves) if (s.kind) out[s.kind] += s.total
+  return out
 }

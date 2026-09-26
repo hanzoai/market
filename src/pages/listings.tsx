@@ -1,7 +1,8 @@
 // A seller's listings, and the form that creates or edits one. A listing offers
-// something the org already has — an agent, an app, a skill, an MCP server — so
-// the form picks it from the org's own inventory, or authors a skill / registers
-// a server first.
+// something the org already has — an agent or persona, an app, a skill, an MCP
+// server — so the form picks it from the org's own inventory, or authors a skill /
+// registers a server first. Each is hired for a job; per-call tools are the
+// platform's own and are not listed here.
 
 import { useEffect, useState } from 'react'
 import { Text, XStack, YStack } from '@hanzo/ui'
@@ -15,7 +16,6 @@ import {
   authoredSkills,
   authorSkill,
   connectMcp,
-  KINDS,
   mcpServers,
   ownListings,
   publish,
@@ -25,7 +25,7 @@ import {
   type Kind,
   type Listing,
 } from '~/lib/market'
-import { free, usd, valid } from '~/lib/money'
+import { each, free, valid } from '~/lib/money'
 import { useRead, useRun, type Read } from '~/lib/read'
 import { Gate } from '~/gate'
 import { SellNav } from '~/pages/setup'
@@ -59,11 +59,11 @@ function Mine() {
                   </Text>
                 </Link>
                 <Text fontSize="$1" color="$quiet">
-                  {l.kind ? LABEL[l.kind].one : 'Tool'} · {l.tool}
+                  {LABEL[l.kind].one} · {l.tool}
                 </Text>
               </YStack>
               <Text fontSize="$2" color="$ink">
-                {free(l.price) ? 'Free' : usd(l.price, l.currency)}
+                {free(l.price) ? 'Free' : each(l.price, l.kind)}
               </Text>
               <Mark tone={l.public ? 'up' : 'quiet'} says={l.public ? 'Public' : 'Private'} />
               <Act disabled={busy} onPress={() => void run(async () => (await unpublish(l.id), read.again()))} label={`Unpublish ${l.title}`}>
@@ -85,9 +85,12 @@ export function ListingForm() {
   )
 }
 
+/** What an org lists: everything but the platform's per-call tools. */
+const SOLD: Kind[] = ['agent', 'persona', 'app', 'skill', 'mcp']
+
 /** What the org already has of `kind`, as (tool name, label) pairs. */
 async function inventory(kind: Kind, org: string | null): Promise<{ tool: string; label: string }[]> {
-  if (kind === 'agent') return (await agents()).agents.map((a) => ({ tool: a.name, label: a.name }))
+  if (kind === 'agent' || kind === 'persona') return (await agents()).agents.map((a) => ({ tool: a.name, label: a.name }))
   if (kind === 'skill') return (await authoredSkills()).skills.map((s) => ({ tool: s.name, label: s.name }))
   if (kind === 'mcp') return (await mcpServers()).servers.map((s) => ({ tool: s.name, label: `${s.name} · ${s.url}` }))
   if (!org) return []
@@ -115,7 +118,7 @@ function Form() {
   useEffect(() => {
     const l = existing.it
     if (!l) return
-    if (l.kind) setKind(l.kind)
+    setKind(l.kind)
     setTool(l.tool)
     setTitle(l.title)
     setDescription(l.description)
@@ -161,7 +164,7 @@ function Form() {
             {made.title}
           </Text>
           <Text fontSize="$2" color="$soft">
-            {free(made.price) ? 'Free' : `${usd(made.price)} per ${kind === 'agent' ? 'job' : 'call'}`} · {made.tool}
+            {free(made.price) ? 'Free' : each(made.price, made.kind)} · {made.tool}
           </Text>
           <XStack gap="$2" flexWrap="wrap">
             <Go to={`/l/${encodeURIComponent(made.id)}`} loud>
@@ -180,7 +183,7 @@ function Form() {
       <Section title="What you are selling">
         <Panel gap="$4">
           <XStack gap="$2" flexWrap="wrap" role="group" aria-label="Kind">
-            {KINDS.map((k) => (
+            {SOLD.map((k) => (
               <Act key={k} on={kind === k} disabled={editing} onPress={() => (setKind(k), setTool(''))}>
                 {LABEL[k].one}
               </Act>
@@ -205,11 +208,11 @@ function Form() {
           <Words label="Description" value={description} set={setDescription} hint="What it does, what it needs, what it returns." />
           <Fields>
             <Field
-              label={kind === 'agent' ? 'Price per job (USD)' : 'Price per call (USD)'}
+              label="Price per job (USD)"
               value={price}
               set={setPrice}
               name="price"
-              help="0 is free. Up to 18 decimal places — per-call prices are often fractions of a cent."
+              help="What a job is offered at; the buyer can name another amount at checkout. 0 lists it without a price."
             />
             {priced ? (
               mine.it?.wallets.length ? (
@@ -329,7 +332,7 @@ function Source({
         </YStack>
       ) : null}
 
-      {kind === 'agent' && have.it && !list.length ? <Go to="https://console.hanzo.ai/agents">Create an agent in the console</Go> : null}
+      {(kind === 'agent' || kind === 'persona') && have.it && !list.length ? <Go to="https://console.hanzo.ai/agents">Create an agent in the console</Go> : null}
       <Refusal says={failed} />
     </YStack>
   )

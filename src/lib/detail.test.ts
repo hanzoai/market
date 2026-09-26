@@ -1,41 +1,59 @@
-import { appDetail, listingDetail, mcpCall, mcpDetail, skillDetail } from '~/lib/detail'
+import { appDetail, docs, listingDetail, mcpCall, mcpDetail, skillDetail } from '~/lib/detail'
 import type { ShopListing } from '~/lib/market'
 
+const rep = { rating: null, reviews: 0, installs: 0, jobs: { completed: 0, disputed: 0 } }
 const base: ShopListing = {
   id: 'lst_1',
   publisherOrg: 'orbital',
+  kind: 'agent',
   tool: 'deep-research',
   title: 'Deep Research',
   description: 'Writes the brief.',
   category: '',
   price: '250',
   currency: 'USD',
-  recipient: 'wal_1',
   public: true,
   createdAt: 1_700_000_000,
-  kind: 'agent',
-  reputation: { rating: null, reviews: 0, installs: 0, jobs: { completed: 0, disputed: 0 } },
+  updatedAt: 1_700_000_000,
+  seller: { org: 'orbital', documented: false, reputation: rep },
+  reputation: rep,
+  links: { cli: 'hanzo marketplace jobs create --listing lst_1 --brief <brief> --amount <usd>', mcp: { tool: 'marketplace', op: 'post_marketplace_jobs' } },
+}
+const tool: ShopListing = {
+  ...base,
+  kind: 'tool',
+  tool: 'geocode',
+  price: '0.0025',
+  links: { cli: 'hanzo marketplace install --tool geocode', mcp: { tool: 'marketplace', op: 'post_marketplace_install' } },
 }
 
 describe('listing detail', () => {
-  it('hires an agent through escrow, and can pay one per call', () => {
-    expect(listingDetail(base).get).toEqual({ how: 'checkout', listing: 'lst_1', rails: ['escrow', 'x402'] })
-    expect(listingDetail({ ...base, price: '0' }).get).toEqual({ how: 'checkout', listing: 'lst_1', rails: ['escrow'] })
+  it('hires everything a seller lists, priced or free, through checkout', () => {
+    for (const kind of ['agent', 'persona', 'app', 'skill', 'mcp'] as const) {
+      expect(listingDetail({ ...base, kind }).get).toEqual({ how: 'checkout', listing: 'lst_1', hire: true })
+      expect(listingDetail({ ...base, kind, price: '0' }).get).toEqual({ how: 'checkout', listing: 'lst_1', hire: true })
+    }
   })
 
-  it('sells a priced tool per call and installs a free one directly', () => {
-    expect(listingDetail({ ...base, kind: 'skill', price: '0.01' }).get).toEqual({ how: 'checkout', listing: 'lst_1', rails: ['x402'] })
-    expect(listingDetail({ ...base, kind: 'mcp', price: '0' }).get).toEqual({ how: 'install', tool: 'deep-research' })
+  it('sells a priced platform tool per call and installs a free one directly', () => {
+    expect(listingDetail(tool).get).toEqual({ how: 'checkout', listing: 'lst_1', hire: false })
+    expect(listingDetail({ ...tool, price: '0' }).get).toEqual({ how: 'install', tool: 'geocode' })
   })
 
-  it('points at docs, the CLI and the MCP tool for the same install', () => {
+  it('points at docs, and at the command and MCP operation the platform names', () => {
     const d = listingDetail({ ...base, category: 'research', docs: 'https://docs.orbital.dev' })
     expect(d.links).toEqual([{ label: 'Documentation', href: 'https://docs.orbital.dev/' }])
     expect(listingDetail(base).links[0].href).toBe('https://docs.hanzo.ai/docs/api')
-    expect(d.cli).toBe('hanzo marketplace install --tool deep-research')
-    expect(mcpCall(d)).toBe('{"name":"marketplace","arguments":{"op":"post_marketplace_install","input":{"tool":"deep-research"}}}')
+    expect(listingDetail({ ...base, links: { ...base.links, docs: '/docs/agents/research' } }).links[0].href).toBe('https://docs.hanzo.ai/docs/agents/research')
+    expect(d.cli).toBe('hanzo marketplace jobs create --listing lst_1 --brief <brief> --amount <usd>')
+    expect(mcpCall(d)).toBe('{"name":"marketplace","arguments":{"op":"post_marketplace_jobs","input":{"listing":"lst_1","brief":"<brief>","amount":"<usd>"}}}')
+    expect(mcpCall(listingDetail(tool))).toBe('{"name":"marketplace","arguments":{"op":"post_marketplace_install","input":{"tool":"geocode"}}}')
     expect(d.facts).toContainEqual(['Category', 'research'])
     expect(d.facts).toContainEqual(['Listed', '2023-11-14'])
+    expect(d.facts).toContainEqual(['Tax form', 'Not on file'])
+    expect(listingDetail({ ...base, seller: { ...base.seller, documented: true } }).facts).toContainEqual(['Tax form', 'Certified'])
+    expect(docs('//evil.example/x')).toBeNull()
+    expect(docs(undefined)).toBeNull()
   })
 
   it('opens an app where it lives', () => {

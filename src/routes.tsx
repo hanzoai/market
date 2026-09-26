@@ -16,9 +16,11 @@ export const routes = [
     children: [
       { path: '/', element: <Browse /> },
       { path: '/agents', element: <Browse kind="agent" /> },
+      { path: '/personas', element: <Browse kind="persona" /> },
       { path: '/apps', element: <Browse kind="app" /> },
       { path: '/skills', element: <Browse kind="skill" /> },
       { path: '/mcp', element: <Browse kind="mcp" /> },
+      { path: '/tools', element: <Browse kind="tool" /> },
       { path: '/auth/callback', element: <Callback /> },
       { path: '/l/:id', element: <ListingPage /> },
       { path: '/apps/:org/:name', element: <AppPage /> },

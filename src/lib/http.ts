@@ -9,12 +9,15 @@ import { bearer, org } from '~/lib/token'
 export class Refusal extends Error {
   readonly status: number
   readonly code: string | undefined
+  /** The whole problem document, for a refusal that carries more than words (a 402's terms). */
+  readonly problem: Record<string, unknown> | undefined
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: string, code?: string, problem?: Record<string, unknown>) {
     super(message)
     this.name = 'Refusal'
     this.status = status
     this.code = code
+    this.problem = problem
   }
 }
 
@@ -52,20 +55,28 @@ function headers(call: Call): Headers {
 async function refusal(res: Response): Promise<Refusal> {
   const raw = await res.text().catch(() => '')
   try {
-    const body = JSON.parse(raw) as { detail?: unknown; title?: unknown; error?: unknown; code?: unknown }
+    const body = JSON.parse(raw) as Record<string, unknown>
     const said = [body.detail, body.error, body.title].find((v) => typeof v === 'string' && v.trim())
-    return new Refusal(res.status, (said as string | undefined) ?? res.statusText, typeof body.code === 'string' ? body.code : undefined)
+    return new Refusal(res.status, (said as string | undefined) ?? res.statusText, typeof body.code === 'string' ? body.code : undefined, body)
   } catch {
     return new Refusal(res.status, raw.trim().slice(0, 200) || res.statusText || `HTTP ${res.status}`)
   }
 }
 
+/**
+ * Said on `window` when the gateway refuses the session this page holds (401): the
+ * token is expired or revoked, so the reader is signed out, whatever storage says.
+ */
+export const LAPSED = 'market:lapsed'
+
 async function send(call: Call): Promise<Response> {
+  const h = headers(call)
   const res = await fetch(url(call.path, call.query), {
     method: call.method ?? 'GET',
-    headers: headers(call),
+    headers: h,
     body: call.body === undefined ? undefined : JSON.stringify(call.body),
   })
+  if (res.status === 401 && h.has('Authorization') && typeof window !== 'undefined') window.dispatchEvent(new Event(LAPSED))
   if (!res.ok) throw await refusal(res)
   return res
 }

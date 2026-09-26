@@ -15,8 +15,8 @@ export type Get =
   | { how: 'install'; tool: string }
   /** Connect a server from the MCP registry. */
   | { how: 'connect'; listing: string }
-  /** Priced or hireable: through checkout (clearance first). */
-  | { how: 'checkout'; listing: string; rails: ('x402' | 'escrow')[] }
+  /** Through checkout: a priced platform tool is paid per call; everything else a seller lists is hired for a job, clearance first. */
+  | { how: 'checkout'; listing: string; hire: boolean }
   /** Nothing to install: open it where it lives. */
   | { how: 'open'; href: string }
 
@@ -33,24 +33,31 @@ export interface Detail {
   mcp: { tool: string; op: string; input: Record<string, string> } | null
 }
 
+/** A listing's docs: an https URL, or a path on docs.hanzo.ai (cloud admits nothing else). */
+export function docs(at: string | undefined): string | null {
+  if (at?.startsWith('/') && !at.startsWith('//')) return `${DOCS}${at}`
+  return web(at)
+}
+
 export function listingDetail(l: ShopListing): Detail {
-  const priced = !free(l.price)
-  const rails: ('x402' | 'escrow')[] = l.kind === 'agent' ? (priced ? ['escrow', 'x402'] : ['escrow']) : ['x402']
-  const get: Get = priced || l.kind === 'agent' ? { how: 'checkout', listing: l.id, rails } : { how: 'install', tool: l.tool }
+  const tool = l.kind === 'tool'
+  const get: Get = tool && free(l.price) ? { how: 'install', tool: l.tool } : { how: 'checkout', listing: l.id, hire: !tool }
   return {
     item: fromListing(l),
     body: l.description,
     facts: [
-      ['Seller', l.publisherName || l.publisherOrg],
-      ['Tool', l.tool],
+      ['Seller', l.seller.org],
+      ['Tax form', l.seller.documented ? 'Certified' : 'Not on file'],
+      [tool ? 'Tool' : 'Sells', l.tool],
       ...(l.category ? ([['Category', l.category]] as [string, string][]) : []),
       ['Listed', new Date(l.createdAt * 1000).toISOString().slice(0, 10)],
     ],
     reputation: l.reputation,
-    links: [{ label: 'Documentation', href: web(l.docs) ?? `${DOCS}/docs/api` }],
+    links: [{ label: 'Documentation', href: docs(l.links.docs ?? l.docs) ?? `${DOCS}/docs/api` }],
     get,
-    cli: `hanzo marketplace install --tool ${l.tool}`,
-    mcp: { tool: 'marketplace', op: 'post_marketplace_install', input: { tool: l.tool } },
+    // The command and the MCP operation are the platform's own words for this listing.
+    cli: l.links.cli,
+    mcp: { tool: l.links.mcp.tool, op: l.links.mcp.op, input: tool ? { tool: l.tool } : { listing: l.id, brief: '<brief>', amount: '<usd>' } },
   }
 }
 

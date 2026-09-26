@@ -1,4 +1,4 @@
-import { blob, needsSession, notServed, Refusal, request, text, unbuilt, unsigned, url, why } from '~/lib/http'
+import { blob, LAPSED, needsSession, notServed, Refusal, request, text, unbuilt, unsigned, url, why } from '~/lib/http'
 
 const jwt = `h.${btoa(JSON.stringify({ sub: 's', orgs: ['acme'] }))}.s`
 
@@ -68,6 +68,30 @@ describe('http', () => {
 
     vi.stubGlobal('fetch', answer(500, '{}'))
     expect(await request({ path: '/v1/x' }).catch((x: unknown) => (x as Refusal).status)).toBe(500)
+  })
+
+  it('keeps the whole problem document on the refusal', async () => {
+    vi.stubGlobal('fetch', answer(402, '{"status":402,"detail":"sign the payment","paymentRequired":"e30="}', 'application/problem+json'))
+    const e = (await request({ method: 'POST', path: '/v1/marketplace/jobs', body: {} }).catch((x: unknown) => x)) as Refusal
+    expect(e.problem).toMatchObject({ paymentRequired: 'e30=' })
+  })
+
+  // Red market-8: a session the gateway refuses is a signed-out reader.
+  it('says the session lapsed when the gateway refuses the bearer it was sent', async () => {
+    const heard = vi.fn()
+    window.addEventListener(LAPSED, heard)
+    vi.stubGlobal('fetch', answer(401, '{"status":401,"detail":"token expired"}', 'application/problem+json'))
+    await request({ path: '/v1/principal' }).catch(() => undefined)
+    expect(heard).not.toHaveBeenCalled() // no bearer was sent, so nothing lapsed
+    localStorage.setItem('hanzo_iam_access_token', jwt)
+    await request({ path: '/v1/principal', anonymous: true }).catch(() => undefined)
+    expect(heard).not.toHaveBeenCalled()
+    await request({ path: '/v1/principal' }).catch(() => undefined)
+    expect(heard).toHaveBeenCalledTimes(1)
+    vi.stubGlobal('fetch', answer(403, '{"status":403,"detail":"not an admin"}', 'application/problem+json'))
+    await request({ path: '/v1/principal' }).catch(() => undefined)
+    expect(heard).toHaveBeenCalledTimes(1)
+    window.removeEventListener(LAPSED, heard)
   })
 
   it('names the statuses the storefront treats specially', () => {

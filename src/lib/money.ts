@@ -47,9 +47,19 @@ export function cents(n: number): string {
   return usd((n / 100).toFixed(2))
 }
 
-/** How a listing's price reads: an agent is hired per job, a tool is paid per call. */
-export function perCall(amount: string, kind: Kind): string {
-  return kind === 'agent' ? `from ${usd(amount)} per job` : `${usd(amount)} per call`
+/** How a listing's price reads: a tool is paid per call; everything else is hired per job. */
+export function each(amount: string, kind: Kind): string {
+  return `${usd(amount)} per ${kind === 'tool' ? 'call' : 'job'}`
+}
+
+/** A positive amount to the cent as "250.00" — what a job and a clearance take — or null. */
+export function dollars(amount: string): string | null {
+  if (!valid(amount) || free(amount)) return null
+  const n = units(amount)
+  const cent = 10n ** BigInt(SCALE - 2)
+  if (n % cent !== 0n) return null
+  const c = n / cent
+  return `${c / 100n}.${String(c % 100n).padStart(2, '0')}`
 }
 
 /** A withholding rate (0.24) as words. */
