@@ -97,4 +97,25 @@ describe('useRun', () => {
     })
     expect(result.current).toMatchObject({ failed: 'offline', status: null })
   })
+
+  it('starts no second write while one is in flight, even from the same render', async () => {
+    const { result } = renderHook(() => useRun())
+    let finish: (v: number) => void = () => {}
+    const first = new Promise<number>((r) => {
+      finish = r
+    })
+    const go = vi.fn(() => first)
+    const { run } = result.current
+    let a: Promise<number | undefined> = Promise.resolve(undefined)
+    let b: Promise<number | undefined> = Promise.resolve(undefined)
+    await act(async () => {
+      a = run(go)
+      b = run(go)
+      finish(1)
+      await Promise.all([a, b])
+    })
+    expect(go).toHaveBeenCalledTimes(1)
+    await expect(a).resolves.toBe(1)
+    await expect(b).resolves.toBeUndefined()
+  })
 })

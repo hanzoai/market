@@ -6,7 +6,7 @@
 // leaves no answer behind: a screen never reads one org's record as another's,
 // or a clearance for one amount as the clearance for another.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Refusal, why } from '~/lib/http'
 
@@ -73,8 +73,11 @@ export function useRun() {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
   const [status, setStatus] = useState<number | null>(null)
+  // Held outside render: a second press before the first re-renders is still the second.
+  const going = useRef(false)
   const run = async <T,>(go: () => Promise<T>): Promise<T | undefined> => {
-    if (busy) return undefined
+    if (going.current) return undefined
+    going.current = true
     setBusy(true)
     setFailed(null)
     setStatus(null)
@@ -85,6 +88,7 @@ export function useRun() {
       setStatus(e instanceof Refusal ? e.status : null)
       return undefined
     } finally {
+      going.current = false
       setBusy(false)
     }
   }

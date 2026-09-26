@@ -153,6 +153,7 @@ function Shown({ j, onChange }: { j: Job; onChange: (j: Job) => void }) {
             <Fact k="Rail" v={j.escrow.rail === 'chain' ? 'Lux escrow' : 'x402, held until release'} />
             <Fact k="Network" v={j.escrow.network} />
             <Fact k="Contract" v={j.escrow.contract} />
+            {j.escrow.payTo ? <Fact k="Pays" v={j.escrow.payTo} /> : null}
             {j.escrow.txHash ? <Fact k="Paid" v={j.escrow.txHash} /> : null}
             {j.clearance ? <Fact k="Clearance" v={j.clearance} /> : null}
             {j.deadline ? <Fact k="Deliver by" v={new Date(j.deadline * 1000).toISOString().slice(0, 10)} /> : null}

@@ -163,7 +163,8 @@ function Hire({ listing }: { listing: ShopListing }) {
           deadline: Math.floor(Date.now() / 1000) + Number(days) * 86_400,
           wallet: payer.id,
         }
-        if (!again) {
+        if (again) setAgain(false)
+        else {
           const had = await underway(req)
           if (had) return setAlready(had)
         }

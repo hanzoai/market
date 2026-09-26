@@ -78,6 +78,8 @@ test('browse → listing → sign in → clearance → the buyer wallet signs an
   expect(w.hires[1]).toMatchObject({ listing: 'lst_research', amount: '250.00', category: 'service', wallet: 'wal_acme', payment: expect.any(String) })
   // The mock recovered the signer from the terms with viem: it is the buyer's wallet.
   expect(w.jobs[0]).toMatchObject({ status: 'open', payer: payer.address })
+  // The job shows whom the signed payment pays.
+  await expect(page.getByText('0x209693Bc6afc0C5328bA36FaF03C514EF312287C')).toBeVisible()
 
   // The buyer may take the job back before the seller accepts it.
   await expect(page.getByRole('button', { name: 'Cancel the job' })).toBeVisible()
