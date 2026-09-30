@@ -22,7 +22,7 @@ export function Gate({ why, children }: { why: string; children: ReactNode }) {
           {why}
         </Text>
         <Act loud onPress={session.signIn}>
-          Sign in with Hanzo
+          Try Hanzo
         </Act>
       </YStack>
     )

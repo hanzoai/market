@@ -6,6 +6,7 @@ import { Checkout } from '~/pages/checkout'
 import { Earnings } from '~/pages/earnings'
 import { AppPage, ListingPage, McpPage, SkillPage } from '~/pages/item'
 import { JobPage, Jobs } from '~/pages/jobs'
+import { Login } from '~/login'
 import { ListingForm, Listings } from '~/pages/listings'
 import { Setup } from '~/pages/setup'
 import { Root } from '~/root'
@@ -22,6 +23,8 @@ export const routes = [
       { path: '/mcp', element: <Browse kind="mcp" /> },
       { path: '/tools', element: <Browse kind="tool" /> },
       { path: '/auth/callback', element: <Callback /> },
+      { path: '/login', element: <Login /> },
+      { path: '/signup', element: <Login mode="signup" /> },
       { path: '/l/:id', element: <ListingPage /> },
       { path: '/apps/:org/:name', element: <AppPage /> },
       { path: '/skills/:name', element: <SkillPage /> },

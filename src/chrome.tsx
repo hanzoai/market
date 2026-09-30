@@ -26,7 +26,8 @@ const NAV: HanzoNav[] = [
   },
 ]
 
-const SELL: HanzoLink = { id: 'start-selling', label: 'Start selling', href: '/sell' }
+/** The one filled control, as on every Hanzo site: sign in first, then on to pay. */
+const TRY: HanzoLink = { id: 'try-hanzo', label: 'Try Hanzo', href: '/login' }
 
 export const SURFACE: HanzoSurface = {
   id: 'market',
@@ -34,8 +35,8 @@ export const SURFACE: HanzoSurface = {
   productId: 'market',
   brandName: 'Hanzo Market',
   localNav: NAV,
-  primaryCTA: SELL,
-  preFooter: { heading: 'Sell what you build', actions: [SELL] },
+  primaryCTA: TRY,
+  preFooter: { heading: 'Sell what you build', actions: [TRY] },
 }
 
 export function Header() {

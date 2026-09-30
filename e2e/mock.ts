@@ -677,6 +677,10 @@ async function iam(route: Route, w: World, base: string) {
       },
       cors,
     )
+  // The embedded sign-in's credential call, posted to the page's own origin: this
+  // browser holds a session, so IAM answers it with a code (its single sign-on branch).
+  if (url.pathname === '/v1/iam/login') return json(route, 200, { status: 'ok', data: 'test-code' }, cors)
+  if (url.pathname === '/v1/iam/oauth/revoke' || url.pathname === '/v1/iam/oauth/logout') return json(route, 200, { status: 'ok' }, cors)
   if (url.pathname === '/v1/iam/oauth/authorize') {
     const back = new URL(url.searchParams.get('redirect_uri') ?? `${base}/auth/callback`)
     back.searchParams.set('code', 'test-code')
@@ -698,7 +702,10 @@ async function iam(route: Route, w: World, base: string) {
 /** Serve the platform and the issuer from `w` for this page. */
 export async function mock(page: Page, w: World) {
   const base = new URL(page.url() === 'about:blank' ? 'http://127.0.0.1' : page.url()).origin
-  await page.route(/\/v1\//, (route) => (new URL(route.request().url()).hostname === 'hanzo.id' ? iam(route, w, base) : api(route, w)))
+  await page.route(/\/v1\//, (route) => {
+    const u = new URL(route.request().url())
+    return u.hostname === 'hanzo.id' || u.pathname.startsWith('/v1/iam/') ? iam(route, w, base) : api(route, w)
+  })
   await page.route(/\/\.well-known\/agent-skills\//, (route) => api(route, w))
   await page.route(/^https:\/\/hanzo\.id\//, (route) => iam(route, w, base))
 }

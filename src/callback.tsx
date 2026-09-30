@@ -3,12 +3,15 @@ import { useIam } from '@hanzo/iam/react'
 import { Text, YStack } from '@hanzo/ui'
 import { useNavigate } from 'react-router'
 
+import { track } from '~/analytics'
+import { takeMethod } from '~/login'
 import { destination } from '~/session'
 
 /**
- * The return from hanzo.id. The SDK reads the code and state from the URL and
- * the PKCE verifier from storage, exchanges the code and stores the tokens; this
- * screen only decides where the reader lands. A failed exchange is shown, never
+ * The return from the sign-in on /login. The SDK reads the code and state from
+ * the URL and the PKCE verifier from storage, exchanges the code and stores the
+ * tokens; this screen counts login_completed, with the way in the sign-in card
+ * noted, and decides where the reader lands. A failed exchange is shown, never
  * swallowed.
  */
 export function Callback() {
@@ -20,7 +23,10 @@ export function Callback() {
     let live = true
     handleCallback()
       .then(() => {
-        if (live) void go(destination(), { replace: true })
+        if (!live) return
+        const method = takeMethod()
+        track('login_completed', method ? { method } : {})
+        void go(destination(), { replace: true })
       })
       .catch((e: unknown) => {
         if (live) setError(e instanceof Error ? e.message : 'Sign-in failed')

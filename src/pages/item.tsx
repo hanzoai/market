@@ -65,7 +65,7 @@ export function McpPage() {
         </Text>
         <XStack>
           <Act loud onPress={session.signIn}>
-            Sign in with Hanzo
+            Try Hanzo
           </Act>
         </XStack>
       </Column>

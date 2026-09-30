@@ -18,10 +18,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@hanzo/event": "^0.3.48",
     "@hanzo/font": "1.9.3",
     "@hanzo/gui": "8.3.5",
-    "@hanzo/iam": "0.21.19",
-    "@hanzo/ui": "8.27.16",
+    "@hanzo/iam": "0.21.24",
+    "@hanzo/ui": "8.27.26",
     "@hanzogui/shell": "8.3.17",
     "lucide-react": "^1.42.0",
     "next-themes": "^0.4.6",
