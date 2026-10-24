@@ -4,7 +4,7 @@ import { Callback } from '~/callback'
 import { Browse } from '~/pages/browse'
 import { Checkout } from '~/pages/checkout'
 import { Earnings } from '~/pages/earnings'
-import { AppPage, ListingPage, McpPage, SkillPage } from '~/pages/item'
+import { AppPage, ListingPage, McpPage, SkillPage, TemplatePage } from '~/pages/item'
 import { JobPage, Jobs } from '~/pages/jobs'
 import { Login } from '~/login'
 import { ListingForm, Listings } from '~/pages/listings'
@@ -22,6 +22,7 @@ export const routes = [
       { path: '/skills', element: <Browse kind="skill" /> },
       { path: '/mcp', element: <Browse kind="mcp" /> },
       { path: '/tools', element: <Browse kind="tool" /> },
+      { path: '/templates', element: <Browse kind="template" /> },
       { path: '/auth/callback', element: <Callback /> },
       { path: '/login', element: <Login /> },
       { path: '/signup', element: <Login mode="signup" /> },
@@ -29,6 +30,7 @@ export const routes = [
       { path: '/apps/:org/:name', element: <AppPage /> },
       { path: '/skills/:name', element: <SkillPage /> },
       { path: '/mcp/:id', element: <McpPage /> },
+      { path: '/templates/:slug', element: <TemplatePage /> },
       { path: '/checkout/:id', element: <Checkout /> },
       { path: '/jobs', element: <Jobs role="buyer" /> },
       { path: '/jobs/:id', element: <JobPage /> },

@@ -9,6 +9,7 @@
 
 import { KINDS, type AppEntry, type Kind, type McpListing, type ShopListing, type SkillEntry } from '~/lib/market'
 import { each, free } from '~/lib/money'
+import type { TemplateEntry } from '~/lib/templates'
 
 export interface Item {
   /** Unique across sources. */
@@ -31,6 +32,7 @@ export const LABEL: Record<Kind, { one: string; many: string }> = {
   skill: { one: 'Skill', many: 'Skills' },
   mcp: { one: 'MCP server', many: 'MCP servers' },
   tool: { one: 'Tool', many: 'Tools' },
+  template: { one: 'Template', many: 'Templates' },
 }
 
 /** Where each type is browsed. */
@@ -41,6 +43,7 @@ export const PATH: Record<Kind, string> = {
   skill: '/skills',
   mcp: '/mcp',
   tool: '/tools',
+  template: '/templates',
 }
 
 export function isKind(v: unknown): v is Kind {
@@ -98,6 +101,18 @@ export function fromMcp(m: McpListing): Item {
   }
 }
 
+export function fromTemplate(t: TemplateEntry): Item {
+  return {
+    key: `template:${t.slug}`,
+    kind: 'template',
+    href: `/templates/${encodeURIComponent(t.slug)}`,
+    title: t.title,
+    summary: t.description,
+    by: 'Hanzo OSS',
+    price: null,
+  }
+}
+
 /** Case-insensitive match of every word in `q` against title, summary and seller. */
 export function matches(item: Item, q: string): boolean {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean)
@@ -106,7 +121,7 @@ export function matches(item: Item, q: string): boolean {
   return words.every((w) => hay.includes(w))
 }
 
-export type Source = 'listings' | 'apps' | 'mcp' | 'skills'
+export type Source = 'listings' | 'apps' | 'mcp' | 'skills' | 'templates'
 
 /** One source, as far as it has been read. */
 export interface Shelf {
@@ -119,8 +134,8 @@ export interface Shelf {
   total: number
 }
 
-/** The order shelves stand in: what sellers publish, then what people hire and run, then the skills directory. */
-const ORDER: Source[] = ['listings', 'apps', 'mcp', 'skills']
+/** The order shelves stand in: what sellers publish, then what people hire and run, then the skills directory and OSS templates. */
+const ORDER: Source[] = ['listings', 'apps', 'mcp', 'skills', 'templates']
 
 /** The shelves a view shows, in order: every shelf for all types, else the listings and that type's directory. */
 export function shown(shelves: Shelf[], type: Kind | ''): Shelf[] {

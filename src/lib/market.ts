@@ -14,9 +14,9 @@ import { dollars } from '~/lib/money'
 import { digest, nonce, payment, rail, terms, vet, type Authorization } from '~/lib/x402'
 
 /** What a listing sells. A tool is the platform's, sold per call; everything else is hired for a job. */
-export type Kind = 'agent' | 'persona' | 'app' | 'skill' | 'mcp' | 'tool'
+export type Kind = 'agent' | 'persona' | 'app' | 'skill' | 'mcp' | 'tool' | 'template'
 /** In the order the shop facets them. */
-export const KINDS: readonly Kind[] = ['agent', 'persona', 'app', 'skill', 'mcp', 'tool']
+export const KINDS: readonly Kind[] = ['agent', 'persona', 'app', 'skill', 'mcp', 'tool', 'template']
 
 // ── /v1/marketplace: the shop and an org's listings ─────────────────────────
 

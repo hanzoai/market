@@ -7,7 +7,7 @@ import { Star } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router'
 
 import { LABEL } from '~/lib/catalog'
-import { appDetail, listingDetail, mcpCall, mcpDetail, skillDetail, type Detail } from '~/lib/detail'
+import { appDetail, listingDetail, mcpCall, mcpDetail, skillDetail, templateDetail, type Detail } from '~/lib/detail'
 import { api } from '~/lib/api'
 import { needsSession, notServed } from '~/lib/http'
 import { apps, connectMcp, install, mcpListing, shopListing, skillDoc, skills, type Reputation } from '~/lib/market'
@@ -46,6 +46,12 @@ export function SkillPage() {
       }),
     [name],
   )
+  return <View read={read} />
+}
+
+export function TemplatePage() {
+  const { slug = '' } = useParams()
+  const read = useRead(() => Promise.resolve(templateDetail(slug)), [slug])
   return <View read={read} />
 }
 

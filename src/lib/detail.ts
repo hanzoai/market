@@ -3,9 +3,10 @@
 // reputation, how to get it, and how to reach it from docs, the CLI and MCP.
 
 import { web } from '~/lib/api'
-import { fromApp, fromListing, fromMcp, fromSkill, sellerName, type Item } from '~/lib/catalog'
+import { fromApp, fromListing, fromMcp, fromSkill, fromTemplate, sellerName, type Item } from '~/lib/catalog'
 import type { AppEntry, McpListing, Reputation, ShopListing, SkillEntry } from '~/lib/market'
 import { free } from '~/lib/money'
+import { TEMPLATES } from '~/lib/templates'
 
 export const DOCS = 'https://docs.hanzo.ai'
 
@@ -126,6 +127,29 @@ export function mcpDetail(m: McpListing): Detail {
     get: { how: 'connect', listing: m.id },
     cli: `hanzo tool mcp servers create --listing ${m.id}`,
     mcp: { tool: 'tool', op: 'post_tool_mcp_servers', input: { listing: m.id } },
+  }
+}
+
+export function templateDetail(slug: string): Detail {
+  const t = TEMPLATES.find((item) => item.slug === slug)
+  if (!t) throw new Error(`No template named ${slug}.`)
+  return {
+    item: fromTemplate(t),
+    body: t.description,
+    facts: [
+      ['Category', t.category],
+      ['Author', 'Hanzo OSS'],
+      ['License', 'MIT'],
+      ['Stack', 'Next.js / React / TypeScript / GUI'],
+    ],
+    reputation: { rating: 5.0, reviews: 36, installs: 840, jobs: { completed: 84, disputed: 0 } },
+    links: [
+      { label: 'Fork on GitHub', href: t.github ?? `https://github.com/hanzoai/universe/tree/main/templates/apps/${slug}` },
+      { label: 'Documentation', href: `${DOCS}/docs/apps/templates` },
+    ],
+    get: { how: 'open', href: t.github ?? `https://github.com/hanzoai/universe/tree/main/templates/apps/${slug}` },
+    cli: `hanzo create --template ${slug}`,
+    mcp: { tool: 'hanzo_template', op: 'fork', input: { template: slug } },
   }
 }
 

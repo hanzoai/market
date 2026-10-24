@@ -52,11 +52,12 @@ describe('catalog', () => {
     expect(fromMcp({ ...mcp, title: 'Stripe' }).title).toBe('Stripe')
   })
 
-  it('names and routes the six kinds cloud sells', () => {
+  it('names and routes the kinds cloud sells', () => {
     expect(KINDS.every(isKind)).toBe(true)
     expect(isKind('bot')).toBe(false)
-    expect(KINDS.map((k) => PATH[k])).toEqual(['/agents', '/personas', '/apps', '/skills', '/mcp', '/tools'])
+    expect(KINDS.map((k) => PATH[k])).toEqual(['/agents', '/personas', '/apps', '/skills', '/mcp', '/tools', '/templates'])
     expect(LABEL.persona.many).toBe('Personas')
+    expect(LABEL.template.many).toBe('Templates')
   })
 
   it('matches every word, case-insensitively', () => {
@@ -80,7 +81,7 @@ describe('catalog', () => {
     const s = shelf('skills', 'skill', [fromSkill({ name: 'x', service: 's', description: '', path: '' })], 1)
     const view = [l, a, s]
     expect(held(view)).toBe(455)
-    expect(tally({ agent: 1, tool: 2 }, view)).toEqual({ agent: 1, persona: 0, app: 453, skill: 1, mcp: 0, tool: 2 })
+    expect(tally({ agent: 1, tool: 2 }, view)).toEqual({ agent: 1, persona: 0, app: 453, skill: 1, mcp: 0, tool: 2, template: 0 })
     expect(tally(null, view).app).toBe(453)
 
     // The first 48 cards: the listing, then apps; the skill waits behind all 453 apps.

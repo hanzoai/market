@@ -7,9 +7,10 @@ import { Box, Text, XStack, YStack } from '@hanzo/ui'
 import { Search } from 'lucide-react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
-import { cards, fromApp, fromListing, fromMcp, fromSkill, held, LABEL, matches, PATH, shown, tally, wanted, type Item, type Shelf, type Source } from '~/lib/catalog'
+import { cards, fromApp, fromListing, fromMcp, fromSkill, fromTemplate, held, LABEL, matches, PATH, shown, tally, wanted, type Item, type Shelf, type Source } from '~/lib/catalog'
 import { unbuilt, unsigned, why } from '~/lib/http'
 import { apps, KINDS, mcpCatalog, shop, skills, type Kind, type Shop } from '~/lib/market'
+import { templates } from '~/lib/templates'
 import { useRead, useRun } from '~/lib/read'
 import { useSession } from '~/session'
 import { Act, Column, Eyebrow, Failed, Nothing, Refusal } from '~/ui'
@@ -30,17 +31,22 @@ function page(source: Source, q: string, type: Kind | '', offset: number, limit:
   if (source === 'listings')
     return shop({ q, kind: type, limit, offset }).then((r) => ({ items: r.listings.map(fromListing), total: r.total, listed: r.facets.kind }))
   if (source === 'apps') return apps({ q, limit, offset }).then((r) => ({ items: r.data.map(fromApp), total: r.total }))
+  if (source === 'templates') {
+    const res = templates({ q, limit, offset })
+    return Promise.resolve({ items: res.templates.map(fromTemplate), total: res.total })
+  }
   return mcpCatalog({ q, limit, offset }).then((r) => ({ items: r.catalog.map(fromMcp), total: r.total }))
 }
 
 /** The first page of every source: what this view shows, and every type's count. */
 async function find(q: string, type: Kind | '', signedIn: boolean): Promise<Found> {
   const notes: Found['notes'] = []
-  const [listed, built, skilled, served] = await Promise.allSettled([
+  const [listed, built, skilled, served, templated] = await Promise.allSettled([
     page('listings', q, type, 0, PAGE),
     page('apps', q, type, 0, PAGE),
     skills(),
     signedIn ? page('mcp', q, type, 0, PAGE) : Promise.reject(new Error('signed out')),
+    page('templates', q, type, 0, PAGE),
   ])
   const shelves: Shelf[] = []
   if (listed.status === 'fulfilled') shelves.push({ source: 'listings', kind: null, items: listed.value.items, total: listed.value.total })
@@ -61,6 +67,8 @@ async function find(q: string, type: Kind | '', signedIn: boolean): Promise<Foun
   else if (!signedIn || unsigned(served.reason))
     notes.push({ source: 'mcp', says: 'Sign in to include MCP servers from the registry.', signIn: true })
   else notes.push({ source: 'mcp', says: `MCP servers: ${why(served.reason)}` })
+
+  if (templated.status === 'fulfilled') shelves.push({ source: 'templates', kind: 'template', items: templated.value.items, total: templated.value.total })
 
   return { shelves, listed: listed.status === 'fulfilled' ? (listed.value.listed ?? null) : null, notes }
 }
