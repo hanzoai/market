@@ -7,13 +7,15 @@ import { Box, Text, XStack, YStack } from '@hanzo/ui'
 import { Search } from 'lucide-react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
-import { cards, fromApp, fromListing, fromMcp, fromSkill, fromTemplate, held, LABEL, matches, PATH, shown, tally, wanted, type Item, type Shelf, type Source } from '~/lib/catalog'
+import { cards, fromApp, fromListing, fromMcp, fromPersona, fromSkill, fromTemplate, held, LABEL, matches, PATH, shown, tally, wanted, type Item, type Shelf, type Source } from '~/lib/catalog'
 import { unbuilt, unsigned, why } from '~/lib/http'
 import { apps, KINDS, mcpCatalog, shop, skills, type Kind, type Shop } from '~/lib/market'
+import { personas } from '~/lib/personas'
+import { mergeMcpCatalog, mergeShop } from '~/lib/registry'
 import { templates } from '~/lib/templates'
 import { useRead, useRun } from '~/lib/read'
 import { useSession } from '~/session'
-import { Act, Column, Eyebrow, Failed, Nothing, Refusal } from '~/ui'
+import { Act, Column, Eyebrow, Failed, Go, Nothing, Panel, Refusal } from '~/ui'
 
 /** Cards drawn per page, and asked of a server at a time. */
 export const PAGE = 48
@@ -29,30 +31,52 @@ interface Found {
 /** One page of a server-paged source. */
 function page(source: Source, q: string, type: Kind | '', offset: number, limit: number): Promise<{ items: Item[]; total: number; listed?: Shop['facets']['kind'] }> {
   if (source === 'listings')
-    return shop({ q, kind: type, limit, offset }).then((r) => ({ items: r.listings.map(fromListing), total: r.total, listed: r.facets.kind }))
+    return shop({ q, kind: type, limit, offset }).then((r) => {
+      const m = offset === 0 ? mergeShop(r, q, type) : r
+      return { items: m.listings.map(fromListing), total: m.total, listed: m.facets.kind }
+    })
+  if (source === 'personas') {
+    const res = personas({ q, limit, offset })
+    return Promise.resolve({ items: res.personas.map(fromPersona), total: res.total })
+  }
   if (source === 'apps') return apps({ q, limit, offset }).then((r) => ({ items: r.data.map(fromApp), total: r.total }))
   if (source === 'templates') {
     const res = templates({ q, limit, offset })
     return Promise.resolve({ items: res.templates.map(fromTemplate), total: res.total })
   }
-  return mcpCatalog({ q, limit, offset }).then((r) => ({ items: r.catalog.map(fromMcp), total: r.total }))
+  return mcpCatalog({ q, limit, offset })
+    .then((r) => {
+      const m = mergeMcpCatalog(r.catalog, q)
+      return { items: m.catalog.slice(offset, offset + limit).map(fromMcp), total: m.total }
+    })
+    .catch(() => {
+      const m = mergeMcpCatalog([], q)
+      return { items: m.catalog.slice(offset, offset + limit).map(fromMcp), total: m.total }
+    })
 }
 
 /** The first page of every source: what this view shows, and every type's count. */
 async function find(q: string, type: Kind | '', signedIn: boolean): Promise<Found> {
   const notes: Found['notes'] = []
-  const [listed, built, skilled, served, templated] = await Promise.allSettled([
+  const [listed, personified, built, skilled, served, templated] = await Promise.allSettled([
     page('listings', q, type, 0, PAGE),
+    page('personas', q, type, 0, PAGE),
     page('apps', q, type, 0, PAGE),
     skills(),
-    signedIn ? page('mcp', q, type, 0, PAGE) : Promise.reject(new Error('signed out')),
+    page('mcp', q, type, 0, PAGE),
     page('templates', q, type, 0, PAGE),
   ])
   const shelves: Shelf[] = []
   if (listed.status === 'fulfilled') shelves.push({ source: 'listings', kind: null, items: listed.value.items, total: listed.value.total })
-  else if (unbuilt(listed.reason))
-    notes.push({ source: 'listings', says: 'Listings published by sellers appear here once the public shop is live.' })
-  else notes.push({ source: 'listings', says: `Seller listings: ${why(listed.reason)}` })
+  else {
+    const fallback = mergeShop(null, q, type)
+    shelves.push({ source: 'listings', kind: null, items: fallback.listings.map(fromListing), total: fallback.total })
+    if (unbuilt(listed.reason))
+      notes.push({ source: 'listings', says: 'Listings published by sellers appear here once the public shop is live.' })
+    else notes.push({ source: 'listings', says: `Seller listings: ${why(listed.reason)}` })
+  }
+
+  if (personified.status === 'fulfilled') shelves.push({ source: 'personas', kind: 'persona', items: personified.value.items, total: personified.value.total })
 
   if (built.status === 'fulfilled') shelves.push({ source: 'apps', kind: 'app', items: built.value.items, total: built.value.total })
   else notes.push({ source: 'apps', says: `Apps: ${why(built.reason)}` })
@@ -70,7 +94,12 @@ async function find(q: string, type: Kind | '', signedIn: boolean): Promise<Foun
 
   if (templated.status === 'fulfilled') shelves.push({ source: 'templates', kind: 'template', items: templated.value.items, total: templated.value.total })
 
-  return { shelves, listed: listed.status === 'fulfilled' ? (listed.value.listed ?? null) : null, notes }
+  const listedFacets =
+    listed.status === 'fulfilled'
+      ? (listed.value.listed ?? null)
+      : mergeShop(null, q, type).facets.kind
+
+  return { shelves, listed: listedFacets, notes }
 }
 
 export function Browse({ kind }: { kind?: Kind }) {
@@ -118,10 +147,10 @@ export function Browse({ kind }: { kind?: Kind }) {
       <YStack items="center" gap="$4" px={32} pt="$10" pb="$6">
         <Eyebrow>Hanzo Market</Eyebrow>
         <Text render="h1" fontSize="$10" lineHeight="$10" fontWeight="600" color="$ink" text="center" maxW={880}>
-          Agents, apps, skills and MCP servers
+          Agents, personas, apps, skills, MCP servers and tools
         </Text>
-        <Text fontSize="$4" color="$soft" text="center" maxW={640}>
-          Install what you need, hire an agent for a job, or sell what you build.
+        <Text fontSize="$4" color="$soft" text="center" maxW={680}>
+          Install open-source agents, personas, skills, connectors, and MCP servers, hire an agent for a job, or contribute and get paid over x402 when people use your work.
         </Text>
         <form
           role="search"
@@ -189,6 +218,28 @@ export function Browse({ kind }: { kind?: Kind }) {
           </XStack>
         ) : null}
         <Refusal says={reading.failed} />
+
+        <Panel gap="$3">
+          <XStack justify="space-between" items="center" flexWrap="wrap" gap="$4">
+            <YStack gap="$1" flex={1} minW={260}>
+              <Text fontSize="$4" fontWeight="600" color="$ink">
+                Open Source & Creator Revenue (x402)
+              </Text>
+              <Text fontSize="$2" color="$soft">
+                Every Hanzo persona, default agent, skill, MCP server, connector, and app template is open-source. Fork and contribute on GitHub, or publish your listing with a payout wallet and get paid automatically over x402 whenever people or agents use your work.
+              </Text>
+            </YStack>
+            <XStack gap="$2" flexWrap="wrap">
+              <Go to="/sell" loud>
+                Publish & get paid
+              </Go>
+              <Go to="https://github.com/hanzoai/personas">Personas OSS</Go>
+              <Go to="https://github.com/hanzoai/agents">Agents OSS</Go>
+              <Go to="https://github.com/hanzoai/mcp">MCP & Connectors OSS</Go>
+              <Go to="https://github.com/hanzoai/skills">Skills OSS</Go>
+            </XStack>
+          </XStack>
+        </Panel>
       </Column>
     </YStack>
   )

@@ -8,10 +8,13 @@ import { useLocation } from 'react-router'
 import { useSession } from '~/session'
 
 const NAV: HanzoNav[] = [
-  { id: 'agents', label: 'Agents', href: '/agents', glyph: 'bot', hint: 'Hire an agent for a job' },
+  { id: 'agents', label: 'Agents', href: '/agents', glyph: 'bot', hint: 'Hire or run an agent' },
+  { id: 'personas', label: 'Personas', href: '/personas', glyph: 'user', hint: '1,042 open-source personas' },
   { id: 'apps', label: 'Apps', href: '/apps', glyph: 'blocks', hint: 'Apps built on Hanzo' },
   { id: 'skills', label: 'Skills', href: '/skills', glyph: 'spark', hint: 'Skills an agent can load' },
-  { id: 'mcp', label: 'MCP servers', href: '/mcp', glyph: 'plug', hint: 'Tools over MCP' },
+  { id: 'mcp', label: 'MCP servers', href: '/mcp', glyph: 'plug', hint: 'MCP servers and connectors' },
+  { id: 'tools', label: 'Tools', href: '/tools', glyph: 'terminal', hint: 'Platform tools over x402' },
+  { id: 'templates', label: 'Templates', href: '/templates', glyph: 'layers', hint: 'Open-source starter templates' },
   {
     id: 'sell',
     label: 'Sell',

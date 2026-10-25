@@ -7,17 +7,28 @@ import { Star } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router'
 
 import { LABEL } from '~/lib/catalog'
-import { appDetail, listingDetail, mcpCall, mcpDetail, skillDetail, templateDetail, type Detail } from '~/lib/detail'
+import { appDetail, listingDetail, mcpCall, mcpDetail, personaDetail, skillDetail, templateDetail, type Detail } from '~/lib/detail'
 import { api } from '~/lib/api'
 import { needsSession, notServed } from '~/lib/http'
 import { apps, connectMcp, install, mcpListing, shopListing, skillDoc, skills, type Reputation } from '~/lib/market'
+import { findDefaultListing, findDefaultMcp } from '~/lib/registry'
 import { useRead, useRun, type Read } from '~/lib/read'
 import { useSession } from '~/session'
 import { Act, Code, Column, Count, Eyebrow, Failed, Go, Mark, Nothing, Panel, Pending, Refusal, Section } from '~/ui'
 
 export function ListingPage() {
   const { id = '' } = useParams()
-  const read = useRead(() => shopListing(id).then(listingDetail), [id])
+  const read = useRead(
+    () =>
+      shopListing(id)
+        .catch((err) => {
+          const fallback = findDefaultListing(id)
+          if (fallback) return fallback
+          throw err
+        })
+        .then(listingDetail),
+    [id],
+  )
   return <View read={read} />
 }
 
@@ -55,11 +66,38 @@ export function TemplatePage() {
   return <View read={read} />
 }
 
+export function PersonaPage() {
+  const { slug = '' } = useParams()
+  const read = useRead(
+    () =>
+      fetch(`/personas/${encodeURIComponent(slug)}.md`)
+        .then((r) => (r.ok ? r.text() : ''))
+        .catch(() => '')
+        .then((doc) => personaDetail(slug, doc)),
+    [slug],
+  )
+  return <View read={read} />
+}
+
 export function McpPage() {
   const { id = '' } = useParams()
   const session = useSession()
-  const read = useRead(session.loading ? null : () => mcpListing(id).then(mcpDetail), [id, session.loading, session.signedIn])
-  if (!session.loading && (!session.signedIn || needsSession(read.status))) {
+  const fallback = findDefaultMcp(id)
+  const read = useRead(
+    session.loading
+      ? null
+      : () => {
+          if (!session.signedIn && fallback) return Promise.resolve(mcpDetail(fallback))
+          return mcpListing(id)
+            .catch((err) => {
+              if (fallback) return fallback
+              throw err
+            })
+            .then(mcpDetail)
+        },
+    [id, session.loading, session.signedIn],
+  )
+  if (!session.loading && !fallback && (!session.signedIn || needsSession(read.status))) {
     return (
       <Column gap="$4" py="$8">
         <Eyebrow>MCP server</Eyebrow>
@@ -145,6 +183,17 @@ function Shown({ d }: { d: Detail }) {
         </XStack>
         {d.cli ? <Code label="CLI" line={d.cli} /> : null}
         {call ? <Code label="MCP tool (hanzo-mcp)" line={call} /> : null}
+      </Section>
+
+      <Section
+        title="Contribute & Earn (OSS + x402)"
+        says="Every Hanzo agent, persona, skill, MCP server, and template is open-source. Fork or improve it on GitHub, or publish your own on Hanzo Market and get paid automatically over x402 whenever people or agents use your work."
+      >
+        <XStack gap="$2" flexWrap="wrap">
+          <Go to="/sell">Publish & earn on Hanzo Market</Go>
+          <Go to="https://github.com/hanzoai">Contribute on GitHub</Go>
+          <Go to="https://docs.hanzo.ai/docs/marketplace">Creator payout docs</Go>
+        </XStack>
       </Section>
     </Column>
   )

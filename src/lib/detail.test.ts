@@ -1,4 +1,4 @@
-import { appDetail, docs, listingDetail, mcpCall, mcpDetail, skillDetail } from '~/lib/detail'
+import { appDetail, docs, listingDetail, mcpCall, mcpDetail, personaDetail, skillDetail, templateDetail } from '~/lib/detail'
 import type { ShopListing } from '~/lib/market'
 
 const rep = { rating: null, reviews: 0, installs: 0, jobs: { completed: 0, disputed: 0 } }
@@ -97,5 +97,19 @@ describe('listing detail', () => {
     expect(m.facts).toContainEqual(['Official', 'Yes'])
     expect(m.links.map((l) => l.label)).toEqual(['Website', 'Source', 'Documentation'])
     expect(mcpCall({ ...m, mcp: null })).toBeNull()
+  })
+
+  it('builds detail views for personas and templates', () => {
+    const p = personaDetail('ada', 'Custom markdown prompt')
+    expect(p.item.kind).toBe('persona')
+    expect(p.body).toBe('Custom markdown prompt')
+    expect(p.cli).toBe('hanzo agent run --persona ada')
+    expect(personaDetail('ada').body).toContain('mathematician')
+    expect(() => personaDetail('no-such-persona')).toThrow(/No persona named/)
+
+    const t = templateDetail('saas-landing')
+    expect(t.item.kind).toBe('template')
+    expect(t.cli).toBe('hanzo create --template saas-landing')
+    expect(() => templateDetail('no-such-template')).toThrow(/No template named/)
   })
 })

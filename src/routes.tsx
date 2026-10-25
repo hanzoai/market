@@ -4,7 +4,7 @@ import { Callback } from '~/callback'
 import { Browse } from '~/pages/browse'
 import { Checkout } from '~/pages/checkout'
 import { Earnings } from '~/pages/earnings'
-import { AppPage, ListingPage, McpPage, SkillPage, TemplatePage } from '~/pages/item'
+import { AppPage, ListingPage, McpPage, PersonaPage, SkillPage, TemplatePage } from '~/pages/item'
 import { JobPage, Jobs } from '~/pages/jobs'
 import { Login } from '~/login'
 import { ListingForm, Listings } from '~/pages/listings'
@@ -27,6 +27,7 @@ export const routes = [
       { path: '/login', element: <Login /> },
       { path: '/signup', element: <Login mode="signup" /> },
       { path: '/l/:id', element: <ListingPage /> },
+      { path: '/personas/:slug', element: <PersonaPage /> },
       { path: '/apps/:org/:name', element: <AppPage /> },
       { path: '/skills/:name', element: <SkillPage /> },
       { path: '/mcp/:id', element: <McpPage /> },

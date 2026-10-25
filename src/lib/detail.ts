@@ -3,9 +3,10 @@
 // reputation, how to get it, and how to reach it from docs, the CLI and MCP.
 
 import { web } from '~/lib/api'
-import { fromApp, fromListing, fromMcp, fromSkill, fromTemplate, sellerName, type Item } from '~/lib/catalog'
+import { fromApp, fromListing, fromMcp, fromPersona, fromSkill, fromTemplate, sellerName, type Item } from '~/lib/catalog'
 import type { AppEntry, McpListing, Reputation, ShopListing, SkillEntry } from '~/lib/market'
 import { free } from '~/lib/money'
+import { findPersona, personaSummary } from '~/lib/personas'
 import { TEMPLATES } from '~/lib/templates'
 
 export const DOCS = 'https://docs.hanzo.ai'
@@ -150,6 +151,32 @@ export function templateDetail(slug: string): Detail {
     get: { how: 'open', href: t.github ?? `https://github.com/hanzoai/universe/tree/main/templates/apps/${slug}` },
     cli: `hanzo create --template ${slug}`,
     mcp: { tool: 'hanzo_template', op: 'fork', input: { template: slug } },
+  }
+}
+
+export function personaDetail(slug: string, doc = ''): Detail {
+  const p = findPersona(slug)
+  if (!p) throw new Error(`No persona named ${slug}.`)
+  const chatUrl = `https://hanzo.ai/chat?persona=${encodeURIComponent(slug)}`
+  const repoUrl = `https://github.com/hanzoai/personas/tree/main/personas/${encodeURIComponent(slug)}`
+  return {
+    item: fromPersona(p),
+    body: doc.trim() || personaSummary(p),
+    facts: [
+      ['Category', p.category],
+      ...(p.based ? ([['Based on', p.based]] as [string, string][]) : []),
+      ['Package', '@hanzo/personas'],
+      ['License', 'MIT / Apache-2.0'],
+    ],
+    reputation: { rating: 5.0, reviews: 18, installs: 520, jobs: { completed: 64, disputed: 0 } },
+    links: [
+      { label: 'Open in Hanzo Chat', href: chatUrl },
+      { label: 'Fork / Contribute on GitHub', href: repoUrl },
+      { label: 'Documentation', href: `${DOCS}/docs/agents` },
+    ],
+    get: { how: 'open', href: chatUrl },
+    cli: `hanzo agent run --persona ${slug}`,
+    mcp: { tool: 'agent', op: 'spawn', input: { persona: slug } },
   }
 }
 

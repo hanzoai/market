@@ -1,5 +1,8 @@
-import { cards, fromApp, fromListing, fromMcp, fromSkill, held, isKind, LABEL, matches, PATH, sellerName, shown, tally, wanted, type Shelf } from '~/lib/catalog'
+import { cards, fromApp, fromListing, fromMcp, fromPersona, fromSkill, fromTemplate, held, isKind, LABEL, matches, PATH, sellerName, shown, tally, wanted, type Shelf } from '~/lib/catalog'
 import { KINDS, type AppEntry, type McpListing, type ShopListing } from '~/lib/market'
+import { findPersona, personas, personaSummary } from '~/lib/personas'
+import { findDefaultListing, findDefaultMcp, mergeMcpCatalog, mergeShop } from '~/lib/registry'
+import { templates } from '~/lib/templates'
 
 const rep = { rating: 4.5, reviews: 2, installs: 3, jobs: { completed: 1, disputed: 0 } }
 const listing: ShopListing = {
@@ -50,6 +53,24 @@ describe('catalog', () => {
     })
     expect(fromMcp(mcp)).toMatchObject({ href: '/mcp/com.stripe_mcp', title: 'stripe', by: 'Stripe' })
     expect(fromMcp({ ...mcp, title: 'Stripe' }).title).toBe('Stripe')
+    expect(fromPersona({ slug: 'ada', name: 'Ada Lovelace', category: 'pioneer', called: 'Ada', about: 'First programmer.' })).toMatchObject({
+      key: 'persona:ada',
+      kind: 'persona',
+      href: '/personas/ada',
+      title: 'Ada Lovelace (Ada)',
+      summary: 'First programmer.',
+      by: 'Hanzo OSS',
+    })
+    expect(fromPersona({ slug: 'plato', name: 'Plato', category: 'philosopher' })).toMatchObject({
+      title: 'Plato',
+      summary: personaSummary({ slug: 'plato', name: 'Plato', category: 'philosopher' }),
+    })
+    expect(fromTemplate({ slug: 'chat', title: 'Chat', category: 'AI', description: 'Chat app.' })).toMatchObject({
+      key: 'template:chat',
+      kind: 'template',
+      href: '/templates/chat',
+      title: 'Chat',
+    })
   })
 
   it('names and routes the kinds cloud sells', () => {
@@ -99,5 +120,27 @@ describe('catalog', () => {
   it('never shows a later shelf past one read only part way', () => {
     const view = [shelf('apps', 'app', apps(0, 2), 5), shelf('skills', 'skill', [fromSkill({ name: 'x', service: 's', description: '', path: '' })], 1)]
     expect(cards(view, 10).map((i) => i.kind)).toEqual(['app', 'app'])
+  })
+
+  it('searches and pages personas, templates, and the OSS registry', () => {
+    expect(personas({ limit: 10 }).personas).toHaveLength(10)
+    expect(personas({ q: 'Lovelace' }).total).toBeGreaterThanOrEqual(1)
+    expect(personas({ category: 'pioneer' }).total).toBeGreaterThanOrEqual(1)
+    expect(findPersona('ada')?.name).toBe('Ada Lovelace')
+    expect(templates({ limit: 5 }).templates).toHaveLength(5)
+    expect(templates({ q: 'dashboard', category: 'Dashboard' }).total).toBeGreaterThanOrEqual(1)
+
+    const mergedShop = mergeShop(null, '', '')
+    expect(mergedShop.listings.length).toBeGreaterThanOrEqual(20)
+    expect(mergedShop.facets.kind.agent).toBeGreaterThanOrEqual(15)
+    expect(mergedShop.facets.kind.tool).toBeGreaterThanOrEqual(10)
+    expect(mergeShop(null, 'hanzo_dev', 'tool').listings).toHaveLength(1)
+    expect(findDefaultListing('dev')?.title).toContain('Dev')
+    expect(findDefaultListing('hanzo_dev')?.kind).toBe('tool')
+
+    const mergedMcp = mergeMcpCatalog([mcp], '')
+    expect(mergedMcp.total).toBeGreaterThan(20)
+    expect(mergeMcpCatalog([], 'slack').total).toBeGreaterThanOrEqual(1)
+    expect(findDefaultMcp('hanzo-mcp')?.official).toBe(true)
   })
 })

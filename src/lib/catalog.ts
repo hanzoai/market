@@ -9,6 +9,7 @@
 
 import { KINDS, type AppEntry, type Kind, type McpListing, type ShopListing, type SkillEntry } from '~/lib/market'
 import { each, free } from '~/lib/money'
+import { personaSummary, type PersonaEntry } from '~/lib/personas'
 import type { TemplateEntry } from '~/lib/templates'
 
 export interface Item {
@@ -113,6 +114,18 @@ export function fromTemplate(t: TemplateEntry): Item {
   }
 }
 
+export function fromPersona(p: PersonaEntry): Item {
+  return {
+    key: `persona:${p.slug}`,
+    kind: 'persona',
+    href: `/personas/${encodeURIComponent(p.slug)}`,
+    title: p.called ? `${p.name} (${p.called})` : p.name,
+    summary: personaSummary(p),
+    by: 'Hanzo OSS',
+    price: null,
+  }
+}
+
 /** Case-insensitive match of every word in `q` against title, summary and seller. */
 export function matches(item: Item, q: string): boolean {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean)
@@ -121,7 +134,7 @@ export function matches(item: Item, q: string): boolean {
   return words.every((w) => hay.includes(w))
 }
 
-export type Source = 'listings' | 'apps' | 'mcp' | 'skills' | 'templates'
+export type Source = 'listings' | 'personas' | 'apps' | 'mcp' | 'skills' | 'templates'
 
 /** One source, as far as it has been read. */
 export interface Shelf {
@@ -134,8 +147,8 @@ export interface Shelf {
   total: number
 }
 
-/** The order shelves stand in: what sellers publish, then what people hire and run, then the skills directory and OSS templates. */
-const ORDER: Source[] = ['listings', 'apps', 'mcp', 'skills', 'templates']
+/** The order shelves stand in: what sellers publish, then personas, apps, MCP servers, skills and OSS templates. */
+const ORDER: Source[] = ['listings', 'personas', 'apps', 'mcp', 'skills', 'templates']
 
 /** The shelves a view shows, in order: every shelf for all types, else the listings and that type's directory. */
 export function shown(shelves: Shelf[], type: Kind | ''): Shelf[] {
