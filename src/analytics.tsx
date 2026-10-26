@@ -2,17 +2,17 @@
 // POST to api.hanzo.ai/v1/event under hanzo.market's own project key, which
 // @hanzo/event finds by host (`siteKey`). Which ad tags load (GA4, the Meta
 // Pixel) is that project's tag set in cloud (/v1/project/tags, asked with the
-// same key and this host), never this code, and nothing loads before the
-// visitor's consent allows it.
+// same key and this host), never this code. The stream is first party and runs
+// for every visitor; consent gates the ad tags alone, and nothing of theirs
+// loads before the visitor allows it.
 
-import { acceptAll, asks, captureClick, readConsent, rejectAll, startTags, track as send, type Analytics as Stream } from '@hanzo/event'
-import { AnalyticsProvider, useAnalytics, useConsent, usePageview } from '@hanzo/event/react'
-import { Text, XStack, YStack } from '@hanzo/ui'
-import { useEffect, useState, type ReactNode } from 'react'
+import { captureClick, readConsent, startTags, track as send, type Analytics as Stream } from '@hanzo/event'
+import { AnalyticsProvider, useAnalytics, usePageview } from '@hanzo/event/react'
+import { Consent } from '@hanzo/ui/consent'
+import { useEffect, type ReactNode } from 'react'
 import { useLocation } from 'react-router'
 
 import { api } from '~/lib/api'
-import { Act } from '~/ui'
 
 /** The sites one visit crosses, so GA4 keeps it one session across them. */
 const DOMAINS = ['hanzo.market', 'hanzo.ai', 'pay.hanzo.ai', 'cal.hanzo.ai']
@@ -79,50 +79,13 @@ function Tags() {
   return null
 }
 
-/** The consent question, asked only where the law asks it first: an opt-in visitor who has not chosen. */
-function Consent() {
-  const [open, setOpen] = useState(asks)
-  if (!open) return null
-  const choose = (all: boolean) => {
-    if (all) acceptAll()
-    else rejectAll()
-    setOpen(false)
-  }
-  return (
-    <YStack
-      role="dialog"
-      aria-label="Cookie preferences"
-      position="fixed"
-      b="$4"
-      l="$4"
-      r="$4"
-      maxW={560}
-      gap="$3"
-      p="$4"
-      rounded="$6"
-      bg="$background"
-      borderWidth={1}
-      borderColor="$borderColor"
-      z={1000}
-    >
-      <Text fontSize="$3" color="$ink">
-        Hanzo uses cookies to measure this site and the ads that bring people to it. Allow them?
-      </Text>
-      <XStack gap="$2" justify="flex-end">
-        <Act onPress={() => choose(false)}>Reject</Act>
-        <Act loud onPress={() => choose(true)}>
-          Accept
-        </Act>
-      </XStack>
-    </YStack>
-  )
-}
-
-/** Our stream runs while the visitor's consent allows Analytics, starting the moment they allow it. */
+/**
+ * Our stream runs for every visitor: it is first-party analytics. <Consent> is
+ * @hanzo/ui's one banner, and its answer governs the ad tags alone (startTags).
+ */
 export function Analytics({ children }: { children: ReactNode }) {
-  const consent = useConsent()
   return (
-    <AnalyticsProvider config={{ product: 'market', host: api(), enabled: consent.analytics }}>
+    <AnalyticsProvider config={{ product: 'market', host: api() }}>
       <Tags />
       <Consent />
       {children}

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "hanzo.market — the Hanzo marketplace for agents, apps, skills and MCP servers. A static storefront over api.hanzo.ai.",
+  "description": "hanzo.market \u2014 the Hanzo marketplace for agents, apps, skills and MCP servers. A static storefront over api.hanzo.ai.",
   "scripts": {
     "build": "vite build",
     "coverage": "vitest run --coverage",
@@ -18,11 +18,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@hanzo/event": "^0.3.58",
+    "@hanzo/event": "0.3.61",
     "@hanzo/font": "1.9.3",
     "@hanzo/gui": "8.3.5",
     "@hanzo/iam": "0.21.24",
-    "@hanzo/ui": "8.27.26",
+    "@hanzo/ui": "8.29.14",
     "@hanzogui/shell": "^8.3.21",
     "lucide-react": "^1.42.0",
     "next-themes": "^0.4.6",
@@ -54,6 +54,7 @@
     "vitest": "5.0.1"
   },
   "overrides": {
+    "@hanzo/event": "0.3.61",
     "@hanzo/gui": "8.3.5",
     "@hanzogui/animations-css": "8.3.5",
     "@hanzogui/config": "8.3.5",

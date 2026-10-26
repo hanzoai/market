@@ -5,8 +5,6 @@ import '@hanzo/font/css'
 import '@hanzo/ui/theme.css'
 // The rules gui components assume (the min-width floor every grid child needs).
 import '@hanzo/ui/styles/motion.css'
-// The embedded sign-in card (@hanzo/ui/auth SignIn).
-import '@hanzo/ui/auth.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
