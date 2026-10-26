@@ -1,8 +1,9 @@
 // Our stream, the ad tags and consent, all from @hanzo/event. Every event is a
-// POST to api.hanzo.ai/v1/event under the publishable key below. Which ad tags
-// load (GA4, the Meta Pixel) is the project's tag set in cloud
-// (/v1/project/tags, asked with this host), never this code, and nothing loads
-// before the visitor's consent allows it.
+// POST to api.hanzo.ai/v1/event under hanzo.market's own project key, which
+// @hanzo/event finds by host (`siteKey`). Which ad tags load (GA4, the Meta
+// Pixel) is that project's tag set in cloud (/v1/project/tags, asked with the
+// same key and this host), never this code, and nothing loads before the
+// visitor's consent allows it.
 
 import { acceptAll, asks, captureClick, readConsent, rejectAll, startTags, track as send, type Analytics as Stream } from '@hanzo/event'
 import { AnalyticsProvider, useAnalytics, useConsent, usePageview } from '@hanzo/event/react'
@@ -12,12 +13,6 @@ import { useLocation } from 'react-router'
 
 import { api } from '~/lib/api'
 import { Act } from '~/ui'
-
-/**
- * The publishable key of Hanzo's site project, the one hanzo.ai ships: it files
- * our stream's events and names the tag set. Write-only and public by design.
- */
-const KEY = 'pk-CmfLA2K6kvsPflrS9DSkt06H_kSoQB_21sjedt6VJdc'
 
 /** The sites one visit crosses, so GA4 keeps it one session across them. */
 const DOMAINS = ['hanzo.market', 'hanzo.ai', 'pay.hanzo.ai', 'cal.hanzo.ai']
@@ -61,7 +56,7 @@ function intent(href: string): string | undefined {
 function Tags() {
   stream = useAnalytics()
   usePageview(useLocation().pathname)
-  useEffect(() => startTags({ key: KEY, host: window.location.hostname, domains: DOMAINS }), [])
+  useEffect(() => startTags({ host: window.location.hostname, domains: DOMAINS }), [])
   useEffect(() => captureClick(readConsent()), [])
   useEffect(() => {
     const carry = (e: Event) => {
@@ -127,7 +122,7 @@ function Consent() {
 export function Analytics({ children }: { children: ReactNode }) {
   const consent = useConsent()
   return (
-    <AnalyticsProvider config={{ product: 'market', host: api(), ingestKey: KEY, enabled: consent.analytics }}>
+    <AnalyticsProvider config={{ product: 'market', host: api(), enabled: consent.analytics }}>
       <Tags />
       <Consent />
       {children}

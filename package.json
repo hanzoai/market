@@ -18,7 +18,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@hanzo/event": "^0.3.48",
+    "@hanzo/event": "^0.3.58",
     "@hanzo/font": "1.9.3",
     "@hanzo/gui": "8.3.5",
     "@hanzo/iam": "0.21.24",
