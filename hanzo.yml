@@ -26,5 +26,6 @@ test:
 site:
   slug: hanzo-market
   dir: dist
-  build: command -v bun >/dev/null 2>&1 || curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; bun install --frozen-lockfile && bun run build
+  # No build: the gate builds the export, and hanzoai/ci carries the bytes it
+  # tested to the publish job instead of that job installing and building again.
   on: [main]
