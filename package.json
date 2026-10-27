@@ -6,11 +6,11 @@
   "license": "MIT",
   "description": "hanzo.market \u2014 the Hanzo marketplace for agents, apps, skills and MCP servers. A static storefront over api.hanzo.ai.",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && bun scripts/pages.ts",
     "coverage": "vitest run --coverage",
     "dev": "vite",
     "format": "oxfmt --write",
-    "lint": "oxlint --type-aware --tsconfig ./tsconfig.json ./src ./e2e && hanzo-design-lint src",
+    "lint": "oxlint --type-aware --tsconfig ./tsconfig.json ./src ./e2e ./scripts && hanzo-design-lint src",
     "preinstall": "bunx only-allow bun",
     "preview": "vite preview",
     "test": "vitest run",

@@ -8,6 +8,7 @@ import { AppPage, ListingPage, McpPage, PersonaPage, SkillPage, TemplatePage } f
 import { JobPage, Jobs } from '~/pages/jobs'
 import { Login } from '~/login'
 import { ListingForm, Listings } from '~/pages/listings'
+import { Missing } from '~/pages/missing'
 import { Setup } from '~/pages/setup'
 import { Root } from '~/root'
 
@@ -41,7 +42,7 @@ export const routes = [
       { path: '/sell/listings/:id', element: <ListingForm /> },
       { path: '/sell/jobs', element: <Jobs role="seller" /> },
       { path: '/sell/earnings', element: <Earnings /> },
-      { path: '*', element: <Browse /> },
+      { path: '*', element: <Missing /> },
     ],
   },
 ]

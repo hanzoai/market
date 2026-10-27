@@ -5,11 +5,12 @@
 
 import type { Kind, McpListing, Reputation, Shop, ShopListing } from '~/lib/market'
 
+/** No settled job, review or install: the directory's entries are not shop listings. */
 const ZERO_REP: Reputation = {
-  rating: 4.9,
-  reviews: 12,
-  installs: 420,
-  jobs: { completed: 85, disputed: 0 },
+  rating: null,
+  reviews: 0,
+  installs: 0,
+  jobs: { completed: 0, disputed: 0 },
 }
 
 const CREATED = 1790737083
@@ -36,7 +37,7 @@ function agentListing(
     docs,
     createdAt: CREATED,
     updatedAt: CREATED,
-    seller: { org: 'hanzo', documented: true, reputation: ZERO_REP },
+    seller: { org: 'hanzo', documented: false, reputation: ZERO_REP },
     reputation: ZERO_REP,
     links: {
       docs,
@@ -69,7 +70,7 @@ function toolListing(
     docs,
     createdAt: CREATED,
     updatedAt: CREATED,
-    seller: { org: 'hanzo', documented: true, reputation: ZERO_REP },
+    seller: { org: 'hanzo', documented: false, reputation: ZERO_REP },
     reputation: ZERO_REP,
     links: {
       docs,

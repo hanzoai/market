@@ -7,7 +7,7 @@ test('@live the storefront loads with the Hanzo chrome and the catalog', async (
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Agents, apps, skills and MCP servers' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Agents, personas, apps, skills, MCP servers and tools' })).toBeVisible()
   await expect(page.getByRole('searchbox', { name: 'Search the marketplace' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Try Hanzo' }).first()).toHaveAttribute('href', '/login')
   await expect(page.getByRole('contentinfo')).toBeVisible()

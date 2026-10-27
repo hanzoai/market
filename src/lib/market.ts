@@ -399,6 +399,8 @@ export interface AppEntry {
   stars?: number
   updated?: string
   license?: string
+  /** The repository a fork tracks, as owner/name. */
+  upstream?: string
 }
 
 export const apps = (q: { q?: string; org?: string; limit?: number; offset?: number }) =>

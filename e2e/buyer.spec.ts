@@ -18,7 +18,7 @@ test('browse → listing → sign in → clearance → the buyer wallet signs an
   await page.goto('/')
 
   // One catalog, four sources, faceted by type, counted by the servers.
-  await expect(page.getByRole('heading', { name: 'Agents, apps, skills and MCP servers' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Agents, personas, apps, skills, MCP servers and tools' })).toBeVisible()
   await expect(page.locator('[data-item="listing:lst_research"]')).toBeVisible()
   await expect(page.locator('[data-item="app:hanzo/chat"]')).toBeVisible()
   await expect(page.locator('[data-note="mcp"]')).toContainText('Sign in to include MCP servers')

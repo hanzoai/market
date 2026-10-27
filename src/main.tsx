@@ -9,6 +9,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { App } from '~/app'
+// Registers the read-only catalog tools where the browser offers WebMCP.
+import '~/webmcp'
 
 // The ambient gui telemetry client, off: our one stream is src/analytics.tsx,
 // and this one would send every page view a second time with no ingest key.

@@ -16,66 +16,76 @@ import { useRead, useRun, type Read } from '~/lib/read'
 import { useSession } from '~/session'
 import { Act, Code, Column, Count, Eyebrow, Failed, Go, Mark, Nothing, Panel, Pending, Refusal, Section } from '~/ui'
 
+// One read per kind of item, shared by the pages and the WebMCP tools.
+
+export const loadListing = (id: string) =>
+  shopListing(id)
+    .catch((err) => {
+      const fallback = findDefaultListing(id)
+      if (fallback) return fallback
+      throw err
+    })
+    .then(listingDetail)
+
+export const loadApp = (org: string, name: string) =>
+  apps({ q: name, org, limit: 50 }).then((r) => {
+    const hit = r.data.find((e) => e.org === org && e.name === name)
+    if (!hit) throw new Error(`No app named ${org}/${name} in the catalog.`)
+    return appDetail(hit)
+  })
+
+export const loadSkill = (name: string) =>
+  Promise.all([skills(), skillDoc(name).catch(() => '')]).then(([index, doc]) => {
+    const hit = index.skills.find((s) => s.name === name)
+    if (!hit) throw new Error(`No skill named ${name}.`)
+    return skillDetail(hit, doc, api())
+  })
+
+export const loadTemplate = async (slug: string) => templateDetail(slug)
+
+/** A persona's definition is published beside its page, at /personas/<slug>/PERSONA.md, for the 67 that have one. */
+export const loadPersona = (slug: string) =>
+  fetch(`/personas/${encodeURIComponent(slug)}/PERSONA.md`)
+    .then((r) => (r.ok ? r.text() : ''))
+    .catch(() => '')
+    .then((doc) => personaDetail(slug, doc))
+
+export const loadMcp = (id: string) =>
+  mcpListing(id)
+    .catch((err) => {
+      const fallback = findDefaultMcp(id)
+      if (fallback) return fallback
+      throw err
+    })
+    .then(mcpDetail)
+
 export function ListingPage() {
   const { id = '' } = useParams()
-  const read = useRead(
-    () =>
-      shopListing(id)
-        .catch((err) => {
-          const fallback = findDefaultListing(id)
-          if (fallback) return fallback
-          throw err
-        })
-        .then(listingDetail),
-    [id],
-  )
+  const read = useRead(() => loadListing(id), [id])
   return <View read={read} />
 }
 
 export function AppPage() {
   const { org = '', name = '' } = useParams()
-  const read = useRead(
-    () =>
-      apps({ q: name, org, limit: 50 }).then((r) => {
-        const hit = r.data.find((e) => e.org === org && e.name === name)
-        if (!hit) throw new Error(`No app named ${org}/${name} in the catalog.`)
-        return appDetail(hit)
-      }),
-    [org, name],
-  )
+  const read = useRead(() => loadApp(org, name), [org, name])
   return <View read={read} />
 }
 
 export function SkillPage() {
   const { name = '' } = useParams()
-  const read = useRead(
-    () =>
-      Promise.all([skills(), skillDoc(name).catch(() => '')]).then(([index, doc]) => {
-        const hit = index.skills.find((s) => s.name === name)
-        if (!hit) throw new Error(`No skill named ${name}.`)
-        return skillDetail(hit, doc, api())
-      }),
-    [name],
-  )
+  const read = useRead(() => loadSkill(name), [name])
   return <View read={read} />
 }
 
 export function TemplatePage() {
   const { slug = '' } = useParams()
-  const read = useRead(() => Promise.resolve(templateDetail(slug)), [slug])
+  const read = useRead(() => loadTemplate(slug), [slug])
   return <View read={read} />
 }
 
 export function PersonaPage() {
   const { slug = '' } = useParams()
-  const read = useRead(
-    () =>
-      fetch(`/personas/${encodeURIComponent(slug)}.md`)
-        .then((r) => (r.ok ? r.text() : ''))
-        .catch(() => '')
-        .then((doc) => personaDetail(slug, doc)),
-    [slug],
-  )
+  const read = useRead(() => loadPersona(slug), [slug])
   return <View read={read} />
 }
 
@@ -88,12 +98,7 @@ export function McpPage() {
       ? null
       : () => {
           if (!session.signedIn && fallback) return Promise.resolve(mcpDetail(fallback))
-          return mcpListing(id)
-            .catch((err) => {
-              if (fallback) return fallback
-              throw err
-            })
-            .then(mcpDetail)
+          return loadMcp(id)
         },
     [id, session.loading, session.signedIn],
   )

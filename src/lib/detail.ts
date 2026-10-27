@@ -143,14 +143,14 @@ export function templateDetail(slug: string): Detail {
       ['License', 'MIT'],
       ['Stack', 'Next.js / React / TypeScript / GUI'],
     ],
-    reputation: { rating: 5.0, reviews: 36, installs: 840, jobs: { completed: 84, disputed: 0 } },
+    reputation: null,
     links: [
       { label: 'Fork on GitHub', href: t.github ?? `https://github.com/hanzoai/universe/tree/main/templates/apps/${slug}` },
       { label: 'Documentation', href: `${DOCS}/docs/apps/templates` },
     ],
     get: { how: 'open', href: t.github ?? `https://github.com/hanzoai/universe/tree/main/templates/apps/${slug}` },
-    cli: `hanzo create --template ${slug}`,
-    mcp: { tool: 'hanzo_template', op: 'fork', input: { template: slug } },
+    cli: null,
+    mcp: null,
   }
 }
 
@@ -168,15 +168,15 @@ export function personaDetail(slug: string, doc = ''): Detail {
       ['Package', '@hanzo/personas'],
       ['License', 'MIT / Apache-2.0'],
     ],
-    reputation: { rating: 5.0, reviews: 18, installs: 520, jobs: { completed: 64, disputed: 0 } },
+    reputation: null,
     links: [
       { label: 'Open in Hanzo Chat', href: chatUrl },
       { label: 'Fork / Contribute on GitHub', href: repoUrl },
       { label: 'Documentation', href: `${DOCS}/docs/agents` },
     ],
     get: { how: 'open', href: chatUrl },
-    cli: `hanzo agent run --persona ${slug}`,
-    mcp: { tool: 'agent', op: 'spawn', input: { persona: slug } },
+    cli: null,
+    mcp: null,
   }
 }
 

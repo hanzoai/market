@@ -8,8 +8,7 @@ playwright-report
 .env*.local
 *.tsbuildinfo
 
-# Agent memory stays local
-LLM.md
+# LLM.md is the tracked memory; these are local links to it
 AGENTS.md
 CLAUDE.md
 GEMINI.md
