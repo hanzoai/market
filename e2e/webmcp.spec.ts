@@ -2,12 +2,12 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { mock, world } from './mock'
 
-// A recording WebMCP: what the storefront registers lands on window.__tools, so
+// A recording WebMCP: what the storefront registers lands on window.registered, so
 // a test can read each tool's declaration and run it in the page.
 async function record(page: Page, where: 'document' | 'navigator') {
   await page.addInitScript((at) => {
     const tools: unknown[] = []
-    Object.defineProperty(window, '__tools', { value: tools })
+    Object.defineProperty(window, 'registered', { value: tools })
     const mc = { registerTool: (t: unknown) => void tools.push(t) }
     Object.defineProperty(at === 'document' ? document : navigator, 'modelContext', { value: mc, configurable: true })
   }, where)
@@ -21,13 +21,13 @@ interface Declared {
 
 const declared = (page: Page) =>
   page.evaluate(() =>
-    (window as unknown as { __tools: Declared[] }).__tools.map((t) => ({ name: t.name, annotations: t.annotations, inputSchema: { required: t.inputSchema.required } })),
+    (window as unknown as { registered: Declared[] }).registered.map((t) => ({ name: t.name, annotations: t.annotations, inputSchema: { required: t.inputSchema.required } })),
   )
 
 const run = (page: Page, name: string, input: Record<string, unknown>) =>
   page.evaluate(
     async ([n, i]) => {
-      const tool = (window as unknown as { __tools: { name: string; execute: (x: unknown) => Promise<unknown> }[] }).__tools.find((t) => t.name === n)
+      const tool = (window as unknown as { registered: { name: string; execute: (x: unknown) => Promise<unknown> }[] }).registered.find((t) => t.name === n)
       try {
         return { ok: await tool!.execute(i) }
       } catch (e) {

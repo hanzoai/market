@@ -5,7 +5,7 @@
     "": {
       "name": "market",
       "dependencies": {
-        "@hanzo/event": "0.3.61",
+        "@hanzo/event": "0.3.63",
         "@hanzo/font": "1.9.3",
         "@hanzo/gui": "8.3.5",
         "@hanzo/iam": "0.21.24",
@@ -43,7 +43,7 @@
     },
   },
   "overrides": {
-    "@hanzo/event": "0.3.61",
+    "@hanzo/event": "0.3.63",
     "@hanzo/gui": "8.3.5",
     "@hanzogui/animations-css": "8.3.5",
     "@hanzogui/config": "8.3.5",
@@ -247,7 +247,7 @@
 
     "@hanzo/design": ["@hanzo/design@0.5.24", "", { "bin": { "hanzo-design-lint": "scripts/lint.mjs" } }, "sha512-eXoD1Q3giJ3TEx2+rtCub/xZX5j4AflWixt3TXsf3dcYrWuChxSVhzRQdDWyibXzPPtn+msCtLX11IvvcHHUzw=="],
 
-    "@hanzo/event": ["@hanzo/event@0.3.61", "", { "dependencies": { "@hanzo/events": "0.3.1" }, "peerDependencies": { "react": ">=19.2.8" }, "optionalPeers": ["react"] }, "sha512-JIGqTFv69XBbMANsT2Kk/L1XQJ1IoZqSNibO/3FRGIzwU6SrpClL7TXeiyT/P3dJ8NV73HCAkJzGF+MB/aScdw=="],
+    "@hanzo/event": ["@hanzo/event@0.3.63", "", { "dependencies": { "@hanzo/events": "0.3.1" }, "peerDependencies": { "react": ">=19.2.8" }, "optionalPeers": ["react"] }, "sha512-vXohkvcrOuF737hpqgUnf5WVNydlKndpbGlItsYRzxXQzCnH0aYHkea1Sc82/no+u27wdlZ/It0ZFlJ6F0+F6w=="],
 
     "@hanzo/events": ["@hanzo/events@0.3.1", "", {}, "sha512-eGK1MTi5tW/luXhddLwrcyK8fq+GE41u/80oIjEKzxHGCfUs8LATiDAGCZ3dYM4D5sxiUS7x8BG2hGuD2gnIUA=="],
 
