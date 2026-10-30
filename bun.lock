@@ -5,7 +5,7 @@
     "": {
       "name": "market",
       "dependencies": {
-        "@hanzo/event": "0.3.63",
+        "@hanzo/event": "0.3.66",
         "@hanzo/font": "1.9.3",
         "@hanzo/gui": "8.3.5",
         "@hanzo/iam": "0.21.24",
@@ -43,7 +43,7 @@
     },
   },
   "overrides": {
-    "@hanzo/event": "0.3.63",
+    "@hanzo/event": "0.3.66",
     "@hanzo/gui": "8.3.5",
     "@hanzogui/animations-css": "8.3.5",
     "@hanzogui/config": "8.3.5",
@@ -247,9 +247,9 @@
 
     "@hanzo/design": ["@hanzo/design@0.5.24", "", { "bin": { "hanzo-design-lint": "scripts/lint.mjs" } }, "sha512-eXoD1Q3giJ3TEx2+rtCub/xZX5j4AflWixt3TXsf3dcYrWuChxSVhzRQdDWyibXzPPtn+msCtLX11IvvcHHUzw=="],
 
-    "@hanzo/event": ["@hanzo/event@0.3.63", "", { "dependencies": { "@hanzo/events": "0.3.1" }, "peerDependencies": { "react": ">=19.2.8" }, "optionalPeers": ["react"] }, "sha512-vXohkvcrOuF737hpqgUnf5WVNydlKndpbGlItsYRzxXQzCnH0aYHkea1Sc82/no+u27wdlZ/It0ZFlJ6F0+F6w=="],
+    "@hanzo/event": ["@hanzo/event@0.3.66", "", { "dependencies": { "@hanzo/events": "0.3.2" }, "peerDependencies": { "react": ">=19.2.8" }, "optionalPeers": ["react"] }, "sha512-trBYhxs103HDBgR3lV4Jp9cwWizcsd7s4GX7hdKmiR9cIXtTsKipu/E93+rZrAYJ7BHSpRqXnHL7KomNwvrrEA=="],
 
-    "@hanzo/events": ["@hanzo/events@0.3.1", "", {}, "sha512-eGK1MTi5tW/luXhddLwrcyK8fq+GE41u/80oIjEKzxHGCfUs8LATiDAGCZ3dYM4D5sxiUS7x8BG2hGuD2gnIUA=="],
+    "@hanzo/events": ["@hanzo/events@0.3.2", "", {}, "sha512-2MIY5Yw6tCrJyz2DR6wlsTq9H7ibL/671yXvnmYWIXFNLWKxrBwhZyQRJ/S6NiR8gIdYGQ3zO01tv1jYiQ+95g=="],
 
     "@hanzo/font": ["@hanzo/font@1.9.3", "", { "peerDependencies": { "next": ">=13.2.0" } }, "sha512-PVCyIFMp/wBVfLsWczVWC3VVxbUzlTDwc/LBRgyT6Fizk09aACq8ByRmbJp0FGKVd1BbUDeekvfv0g1eoj4OvQ=="],
 
