@@ -9,12 +9,15 @@ import { useNavigate, useParams } from 'react-router'
 import { LABEL } from '~/lib/catalog'
 import { appDetail, listingDetail, mcpCall, mcpDetail, personaDetail, skillDetail, templateDetail, type Detail } from '~/lib/detail'
 import { api } from '~/lib/api'
-import { areaLabel, fees, FREELANCE, language, type Profile } from '~/lib/expert'
+import { areaLabel, change, check, fees, FREELANCE, fill, language, mine, refresh, type Change, type Profile } from '~/lib/expert'
+import { pull } from '~/lib/github'
 import { needsSession, notServed } from '~/lib/http'
-import { apps, connectMcp, install, mcpListing, shopListing, skillDoc, skills, type Reputation } from '~/lib/market'
+import { connect, github, GITHUB } from '~/lib/linked'
+import { apps, connectMcp, install, mcpListing, ownListings, shopListing, skillDoc, skills, updateListing, type Listing, type Reputation } from '~/lib/market'
 import { findDefaultListing, findDefaultMcp } from '~/lib/registry'
 import { useRead, useRun, type Read } from '~/lib/read'
 import { Chip, Verified } from '~/pages/experts'
+import { Record, Strengths } from '~/pages/standing'
 import { useSession } from '~/session'
 import { Act, Code, Column, Count, Eyebrow, Failed, Go, Mark, Nothing, Panel, Pending, Refusal, Section } from '~/ui'
 
@@ -137,10 +140,94 @@ function View({ read }: { read: Read<Detail> }) {
   return read.it.item.expert ? <Person d={read.it} expert={read.it.item.expert} /> : <Shown d={read.it} />
 }
 
+/**
+ * The caller's own listing, re-read from GitHub on request: what GitHub says now,
+ * against what the listing says, change by change, and nothing is written until the
+ * person saves. GitHub is the account IAM linked; with none linked, the press
+ * connects one.
+ */
+function Refresh({ own }: { own: Listing }) {
+  const go = useNavigate()
+  const { busy, failed, run } = useRun()
+  const [found, setFound] = useState<{ changes: Change[]; next: ReturnType<typeof fill> } | null>(null)
+
+  const read = () =>
+    void run(async () => {
+      const account = await github()
+      if (!account) return connect(GITHUB, window.location.pathname)
+      setFound(refresh(fill(own), await pull(account)))
+    })
+  const blocked = found ? check(found.next) : null
+  const save = () =>
+    void run(async () => {
+      if (!found) return
+      await updateListing(own.id, change(found.next))
+      setFound(null)
+      await go(0)
+    })
+
+  return (
+    <YStack gap="$3" data-refresh="">
+      <XStack gap="$2" flexWrap="wrap" items="center">
+        <Act disabled={busy} onPress={read}>
+          Refresh from GitHub
+        </Act>
+        <Refusal says={failed} />
+      </XStack>
+      {found ? (
+        <Panel gap="$3">
+          {found.changes.length ? (
+            found.changes.map((c) => (
+              <YStack key={c.field} gap="$1" data-change={c.field}>
+                <Text fontSize="$2" color="$quiet">
+                  {c.label}
+                </Text>
+                {c.before ? (
+                  <Text fontSize="$2" color="$quiet" textDecorationLine="line-through">
+                    {c.before}
+                  </Text>
+                ) : null}
+                <Text fontSize="$3" color="$ink">
+                  {c.after}
+                </Text>
+              </YStack>
+            ))
+          ) : (
+            <Text fontSize="$2" color="$soft">
+              Nothing has changed.
+            </Text>
+          )}
+          <XStack gap="$2" items="center" flexWrap="wrap">
+            {found.changes.length ? (
+              <Act loud disabled={busy || blocked !== null} onPress={save}>
+                Save
+              </Act>
+            ) : null}
+            <Act onPress={() => setFound(null)}>Cancel</Act>
+            {blocked ? (
+              <Text fontSize="$2" color="$quiet">
+                {blocked}
+              </Text>
+            ) : null}
+          </XStack>
+        </Panel>
+      ) : null}
+    </YStack>
+  )
+}
+
+/** The listing page's own mark of "this is yours": the platform's `self`, read from the caller's own listings. */
+function useOwn(listing: string | null): Listing | null {
+  const session = useSession()
+  const own = useRead(session.signedIn && listing ? () => ownListings().then((r) => mine(r.listings)) : null, [session.signedIn, session.org, listing])
+  return own.it && own.it.id === listing ? own.it : null
+}
+
 /** An expert's page: who they are, what they ask, and the one action, Book, which starts the same job as hiring an agent. */
 function Person({ d, expert }: { d: Detail; expert: Profile }) {
   const go = useNavigate()
   const listing = d.get.how === 'checkout' ? d.get.listing : null
+  const own = useOwn(listing)
   const facts: [string, string][] = [
     ['Languages', expert.languages.map(language).join(', ')],
     ['Time zone', expert.timezone],
@@ -167,9 +254,28 @@ function Person({ d, expert }: { d: Detail; expert: Profile }) {
               {FREELANCE}
             </Text>
           ) : null}
+          {expert.reward ? <Record standing={expert.reward} /> : null}
+          <Strengths products={expert.products} top={expert.top} />
           <Text fontSize="$3" color="$ink" whiteSpace="pre-wrap" data-body="">
             {d.body || 'No description.'}
           </Text>
+          {expert.skills?.length ? (
+            <XStack gap="$1" flexWrap="wrap" data-skills="">
+              {expert.skills.map((k) => (
+                <Chip key={k}>{k}</Chip>
+              ))}
+            </XStack>
+          ) : null}
+          {expert.links?.length ? (
+            <XStack gap="$2" flexWrap="wrap" data-links="">
+              {expert.links.map((l) => (
+                <Go key={l} to={l}>
+                  {l.replace(/^https:\/\//, '')}
+                </Go>
+              ))}
+            </XStack>
+          ) : null}
+          {own ? <Refresh own={own} /> : null}
         </YStack>
         <YStack gap="$4" flex={1} minW={280}>
           <Panel>

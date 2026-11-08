@@ -1,0 +1,22 @@
+/* A badge's hover: one soft band of light crossing it once. Motion only where the reader allows it. */
+.shine {
+  position: relative;
+  overflow: hidden;
+}
+.shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, color-mix(in srgb, currentColor 22%, transparent) 50%, transparent 65%);
+  transform: translateX(-120%);
+  transition: transform 600ms ease;
+  pointer-events: none;
+}
+.shine:hover::after {
+  transform: translateX(120%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .shine::after {
+    transition: none;
+  }
+}

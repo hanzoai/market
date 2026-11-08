@@ -22,7 +22,7 @@ function crowd(): World {
 
 const cards = (page: Page) => page.locator('[data-item^="listing:"]')
 
-test('the Experts category lists every expert: verified mark, rating, areas, rate and price, availability', async ({ page }) => {
+test('the Experts category lists every expert: verified mark, rating, jobs, areas, rate and price', async ({ page }) => {
   const w = crowd()
   await mock(page, w)
   await page.goto('/experts')
@@ -36,7 +36,8 @@ test('the Experts category lists every expert: verified mark, rating, areas, rat
   await expect(a.locator('[data-rating]')).toContainText('(23)')
   await expect(a.locator('[data-area]')).toHaveText(['Build with Base', 'Cloud'])
   await expect(a.locator('[data-fees]')).toHaveText('$150.00/hr')
-  await expect(a).toContainText('Weekdays 9-17 PT')
+  await expect(a.locator('[data-jobs]')).toHaveText('57 jobs')
+  await expect(a.locator('[data-standing], [data-strengths]')).toHaveCount(0)
   await expect(a).toHaveAttribute('href', '/experts/lst_ada')
 
   const g = page.locator('[data-item="listing:lst_grace"]')
@@ -177,18 +178,19 @@ test('/experts/join signed out goes through /login and comes back to the form', 
   await expect(page.getByRole('textbox', { name: 'Name or headline' })).toHaveValue('')
 })
 
-/** Fill the form as Ada: Base and Cloud, English and Spanish, Los Angeles, $150 an hour. */
+/** Fill the card as Ada: Base and Cloud, English (this browser's) and Spanish, Los Angeles, part-time on weekdays, $150 an hour. */
 async function describe(page: Page) {
   await page.getByRole('textbox', { name: 'Name or headline' }).fill('Ada Lovelace')
   await page.getByRole('textbox', { name: 'Description' }).fill('Builds on Base.')
   const areas = page.getByRole('group', { name: 'Areas' })
   await areas.getByRole('button', { name: 'Build with Base', exact: true }).click()
   await areas.getByRole('button', { name: 'Cloud', exact: true }).click()
-  const languages = page.getByRole('group', { name: 'Languages' })
-  await languages.getByRole('button', { name: 'English', exact: true }).click()
-  await languages.getByRole('button', { name: 'Spanish', exact: true }).click()
+  // English is the browser's own; Spanish is added.
+  await expect(page.getByRole('group', { name: 'Languages' }).getByRole('button', { name: 'Remove English' })).toBeVisible()
+  await page.getByRole('combobox', { name: 'Add language' }).selectOption('es')
   await page.getByRole('combobox', { name: 'Time zone' }).selectOption('America/Los_Angeles')
-  await page.getByRole('textbox', { name: 'Availability' }).fill('Weekdays 9-17 PT')
+  await page.getByRole('group', { name: 'Availability' }).getByRole('button', { name: 'Part-time' }).click()
+  await page.getByRole('textbox', { name: 'Availability note' }).fill('Weekdays 9-17 PT')
   await page.getByRole('textbox', { name: 'Hourly rate (USD)' }).fill('150')
 }
 
@@ -224,7 +226,7 @@ test('signed in, the form says what is missing, then sends exactly one create an
     price: '0',
     recipient: 'wal_acme',
     public: true,
-    expert: { rate: '150', areas: ['base', 'cloud'], languages: ['en', 'es'], timezone: 'America/Los_Angeles', availability: 'Weekdays 9-17 PT' },
+    expert: { rate: '150', areas: ['base', 'cloud'], languages: ['en', 'es'], timezone: 'America/Los_Angeles', availability: 'Part-time · Weekdays 9-17 PT', skills: [], links: [] },
   })
   await expect(page).toHaveURL(/\/experts\/lst_1$/)
   await expect(page.getByRole('heading', { name: 'Ada Lovelace' })).toBeVisible()
@@ -280,12 +282,12 @@ test('a member with an expert listing edits it: the whole profile is patched, ne
   await expect(page.getByRole('heading', { name: 'Your expert listing', level: 1 })).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Name or headline' })).toHaveValue('Ada Lovelace')
   await expect(page.getByRole('textbox', { name: 'Hourly rate (USD)' })).toHaveValue('150')
-  await expect(page.getByRole('textbox', { name: 'Fixed price (USD)' })).toHaveValue('500')
+  await expect(page.getByRole('textbox', { name: 'Availability note' })).toHaveValue('Weekdays 9-17 PT')
   await expect(page.getByRole('group', { name: 'Areas' }).getByRole('button', { name: 'Build with Base', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByRole('group', { name: 'Areas' }).getByRole('button', { name: 'Cloud', exact: true })).toHaveAttribute('aria-pressed', 'false')
 
   await page.getByRole('group', { name: 'Areas' }).getByRole('button', { name: 'Cloud', exact: true }).click()
-  await page.getByRole('textbox', { name: 'Availability' }).fill('Mornings PT')
+  await page.getByRole('textbox', { name: 'Availability note' }).fill('Mornings PT')
   const sent = page.waitForRequest((r) => r.method() === 'PATCH')
   const patched = page.waitForResponse((r) => r.request().method() === 'PATCH')
   await page.getByRole('button', { name: 'Save' }).click()
@@ -298,7 +300,7 @@ test('a member with an expert listing edits it: the whole profile is patched, ne
     price: '500',
     recipient: 'wal_acme',
     public: true,
-    expert: { rate: '150', areas: ['base', 'cloud'], languages: ['en'], timezone: 'America/Los_Angeles', availability: 'Mornings PT' },
+    expert: { rate: '150', areas: ['base', 'cloud'], languages: ['en'], timezone: 'America/Los_Angeles', availability: 'Mornings PT', skills: [], links: [] },
   })
   await expect(page).toHaveURL(/\/experts\/lst_own$/)
   await expect(page.getByText('Mornings PT')).toBeVisible()

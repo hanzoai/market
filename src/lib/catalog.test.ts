@@ -45,7 +45,7 @@ describe('catalog', () => {
     // A person has their own page and asks by the hour, by the engagement, or both.
     const person = fromListing({ ...listing, kind: 'expert', tool: '', price: '500', expert })
     expect(person).toMatchObject({ key: 'listing:lst_1', kind: 'expert', href: '/experts/lst_1', price: '$150.00/hr · $500.00 fixed' })
-    expect(person.expert).toEqual({ ...expert, price: '500', rating: 4.5, reviews: 2 })
+    expect(person.expert).toEqual({ ...expert, price: '500', rating: 4.5, reviews: 2, jobs: 1 })
     expect(fromListing({ ...listing, kind: 'expert', tool: '', price: '0', expert }).price).toBe('$150.00/hr')
     expect(fromListing({ ...listing, kind: 'expert', tool: '' })).toMatchObject({ href: '/l/lst_1', price: '$250.00 per job' })
     expect(fromListing({ ...listing, kind: 'tool', price: '0.0025' })).toMatchObject({ price: '$0.0025 per call' })

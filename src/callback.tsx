@@ -4,10 +4,15 @@ import { Text, YStack } from '@hanzo/ui'
 import { useNavigate } from 'react-router'
 
 import { track } from '~/analytics'
+import { back, returned } from '~/lib/linked'
 import { takeMethod } from '~/login'
 import { destination } from '~/session'
 
 /**
+ * The return from the sign-in on /login, and from connecting a provider to the
+ * account (`~/lib/linked`): that one brings no code, so it goes back to the page
+ * it left, carrying IAM's reason when it refused.
+ *
  * The return from the sign-in on /login. The SDK reads the code and state from
  * the URL and the PKCE verifier from storage, exchanges the code and stores the
  * tokens; this screen counts login_completed, with the way in the sign-in card
@@ -21,6 +26,12 @@ export function Callback() {
 
   useEffect(() => {
     let live = true
+    const connect = returned(window.location.search)
+    if (connect) {
+      // The page that asked says what IAM said.
+      void go(back(), { replace: true, state: 'refused' in connect ? { refused: connect.refused } : undefined })
+      return undefined
+    }
     handleCallback()
       .then(() => {
         if (!live) return

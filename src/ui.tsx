@@ -238,6 +238,7 @@ export function Field({
   help,
   type = 'text',
   name,
+  enter,
 }: {
   label: string
   value: string
@@ -246,6 +247,8 @@ export function Field({
   help?: string
   type?: string
   name?: string
+  /** Called when Enter is pressed in the field, which then does not submit anything. */
+  enter?: () => void
 }) {
   return (
     <Labelled label={label} help={help}>
@@ -255,9 +258,53 @@ export function Field({
         value={value}
         placeholder={hint}
         onChange={(e) => set(e.target.value)}
+        onKeyDown={
+          enter
+            ? (e) => {
+                if (e.key !== 'Enter') return
+                e.preventDefault()
+                enter()
+              }
+            : undefined
+        }
         style={control}
       />
     </Labelled>
+  )
+}
+
+/** A small input that sits in a row of chips, named for assistive tech and not drawn with a label. */
+export function Entry({ label, value, set, enter, hint }: { label: string; value: string; set: (v: string) => void; enter?: () => void; hint?: string }) {
+  return (
+    <input
+      aria-label={label}
+      value={value}
+      placeholder={hint}
+      onChange={(e) => set(e.target.value)}
+      onKeyDown={
+        enter
+          ? (e) => {
+              if (e.key !== 'Enter') return
+              e.preventDefault()
+              enter()
+            }
+          : undefined
+      }
+      style={{ ...control, width: 'auto', flex: 1, minWidth: 140 }}
+    />
+  )
+}
+
+/** A small list that sits in a row of chips, named for assistive tech and not drawn with a label. */
+export function Add<T extends string>({ label, value, set, of }: { label: string; value: T; set: (v: T) => void; of: readonly { value: T; label: string }[] }) {
+  return (
+    <select aria-label={label} value={value} onChange={(e) => set(e.target.value as T)} style={{ ...control, width: 'auto', minWidth: 140 }}>
+      {of.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   )
 }
 
