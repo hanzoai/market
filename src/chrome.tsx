@@ -7,6 +7,9 @@ import { useLocation } from 'react-router'
 
 import { useSession } from '~/session'
 
+/** The shell's bar is 60 tall (@hanzogui/shell HEADER_H); a page that fills the screen below it says so with this. */
+export const BAR = 60
+
 const NAV: HanzoNav[] = [
   { id: 'agents', label: 'Agents', href: '/agents', glyph: 'bot', hint: 'Hire or run an agent' },
   { id: 'experts', label: 'Experts', href: '/experts', glyph: 'users', hint: 'Book a person for a job' },
