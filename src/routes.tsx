@@ -4,8 +4,10 @@ import { Callback } from '~/callback'
 import { Browse } from '~/pages/browse'
 import { Checkout } from '~/pages/checkout'
 import { Earnings } from '~/pages/earnings'
+import { Experts } from '~/pages/experts'
 import { AppPage, ListingPage, McpPage, PersonaPage, SkillPage, TemplatePage } from '~/pages/item'
 import { JobPage, Jobs } from '~/pages/jobs'
+import { Join } from '~/pages/join'
 import { Login } from '~/login'
 import { ListingForm, Listings } from '~/pages/listings'
 import { Missing } from '~/pages/missing'
@@ -18,6 +20,9 @@ export const routes = [
     children: [
       { path: '/', element: <Browse /> },
       { path: '/agents', element: <Browse kind="agent" /> },
+      { path: '/experts', element: <Experts /> },
+      { path: '/experts/join', element: <Join /> },
+      { path: '/experts/:id', element: <ListingPage /> },
       { path: '/personas', element: <Browse kind="persona" /> },
       { path: '/apps', element: <Browse kind="app" /> },
       { path: '/skills', element: <Browse kind="skill" /> },

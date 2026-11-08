@@ -7,6 +7,7 @@
 // order people shop them — and its counts are the servers' totals, never the
 // number of cards loaded so far.
 
+import { fees, profile, type Profile } from '~/lib/expert'
 import { KINDS, type AppEntry, type Kind, type McpListing, type ShopListing, type SkillEntry } from '~/lib/market'
 import { each, free } from '~/lib/money'
 import { personaSummary, type PersonaEntry } from '~/lib/personas'
@@ -24,10 +25,13 @@ export interface Item {
   by: string
   /** A price line, or null when free. */
   price: string | null
+  /** What an expert's card and page say, when the item is a person. */
+  expert?: Profile
 }
 
 export const LABEL: Record<Kind, { one: string; many: string }> = {
   agent: { one: 'Agent', many: 'Agents' },
+  expert: { one: 'Expert', many: 'Experts' },
   persona: { one: 'Persona', many: 'Personas' },
   app: { one: 'App', many: 'Apps' },
   skill: { one: 'Skill', many: 'Skills' },
@@ -39,6 +43,7 @@ export const LABEL: Record<Kind, { one: string; many: string }> = {
 /** Where each type is browsed. */
 export const PATH: Record<Kind, string> = {
   agent: '/agents',
+  expert: '/experts',
   persona: '/personas',
   app: '/apps',
   skill: '/skills',
@@ -55,6 +60,19 @@ export function isKind(v: unknown): v is Kind {
 export const sellerName = (org: string) => (org === 'admin' ? 'Hanzo' : org)
 
 export function fromListing(l: ShopListing): Item {
+  const expert = profile(l)
+  if (expert) {
+    return {
+      key: `listing:${l.id}`,
+      kind: l.kind,
+      href: `${PATH.expert}/${encodeURIComponent(l.id)}`,
+      title: l.title,
+      summary: l.description,
+      by: sellerName(l.seller.org),
+      price: fees(expert).join(' · ') || null,
+      expert,
+    }
+  }
   return {
     key: `listing:${l.id}`,
     kind: l.kind,

@@ -9,10 +9,12 @@ import { useNavigate, useParams } from 'react-router'
 import { LABEL } from '~/lib/catalog'
 import { appDetail, listingDetail, mcpCall, mcpDetail, personaDetail, skillDetail, templateDetail, type Detail } from '~/lib/detail'
 import { api } from '~/lib/api'
+import { areaLabel, fees, FREELANCE, language, type Profile } from '~/lib/expert'
 import { needsSession, notServed } from '~/lib/http'
 import { apps, connectMcp, install, mcpListing, shopListing, skillDoc, skills, type Reputation } from '~/lib/market'
 import { findDefaultListing, findDefaultMcp } from '~/lib/registry'
 import { useRead, useRun, type Read } from '~/lib/read'
+import { Chip, Verified } from '~/pages/experts'
 import { useSession } from '~/session'
 import { Act, Code, Column, Count, Eyebrow, Failed, Go, Mark, Nothing, Panel, Pending, Refusal, Section } from '~/ui'
 
@@ -132,7 +134,74 @@ function View({ read }: { read: Read<Detail> }) {
     )
   }
   if (!read.it) return <Nothing says="Loading…" />
-  return <Shown d={read.it} />
+  return read.it.item.expert ? <Person d={read.it} expert={read.it.item.expert} /> : <Shown d={read.it} />
+}
+
+/** An expert's page: who they are, what they ask, and the one action, Book, which starts the same job as hiring an agent. */
+function Person({ d, expert }: { d: Detail; expert: Profile }) {
+  const go = useNavigate()
+  const listing = d.get.how === 'checkout' ? d.get.listing : null
+  const facts: [string, string][] = [
+    ['Languages', expert.languages.map(language).join(', ')],
+    ['Time zone', expert.timezone],
+    ...(expert.availability ? ([['Availability', expert.availability]] as [string, string][]) : []),
+  ]
+  return (
+    <Column gap="$6" py="$8">
+      <XStack gap="$6" flexWrap="wrap" items="flex-start">
+        <YStack gap="$3" flex={2} minW={300}>
+          <Eyebrow>Expert</Eyebrow>
+          <XStack items="center" gap="$3" flexWrap="wrap">
+            <Text render="h1" fontSize="$9" fontWeight="600" color="$ink">
+              {d.item.title}
+            </Text>
+            {expert.verified ? <Verified /> : null}
+          </XStack>
+          <XStack gap="$1" flexWrap="wrap">
+            {expert.areas.map((a) => (
+              <Chip key={a}>{areaLabel(a)}</Chip>
+            ))}
+          </XStack>
+          {expert.areas.includes('freelance') ? (
+            <Text fontSize="$2" color="$soft" data-freelance="">
+              {FREELANCE}
+            </Text>
+          ) : null}
+          <Text fontSize="$3" color="$ink" whiteSpace="pre-wrap" data-body="">
+            {d.body || 'No description.'}
+          </Text>
+        </YStack>
+        <YStack gap="$4" flex={1} minW={280}>
+          <Panel>
+            <Text fontSize="$6" fontWeight="600" color="$ink" data-fees="">
+              {fees(expert).join(' · ')}
+            </Text>
+            {listing ? (
+              <Act loud onPress={() => go(`/checkout/${encodeURIComponent(listing)}`)}>
+                Book
+              </Act>
+            ) : null}
+          </Panel>
+          <Panel gap="$2">
+            {facts.map(([k, v]) => (
+              <XStack key={k} justify="space-between" gap="$3">
+                <Text fontSize="$2" color="$quiet">
+                  {k}
+                </Text>
+                <Text fontSize="$2" color="$ink" text="right">
+                  {v}
+                </Text>
+              </XStack>
+            ))}
+          </Panel>
+        </YStack>
+      </XStack>
+
+      <Section title="Reputation">
+        <Rep d={d} />
+      </Section>
+    </Column>
+  )
 }
 
 function Shown({ d }: { d: Detail }) {

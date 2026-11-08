@@ -23,6 +23,7 @@ const listing: ShopListing = {
   links: { cli: 'hanzo marketplace jobs create --listing lst_1 --brief <brief> --amount <usd>', mcp: { tool: 'marketplace', op: 'post_marketplace_jobs' } },
 }
 
+const expert = { rate: '150', areas: ['base', 'cloud'], languages: ['en', 'es'], timezone: 'America/Los_Angeles', availability: 'Weekdays 9-17 PT', verified: true }
 const app: AppEntry = { id: 'hanzo/chat', org: 'hanzo', name: 'chat', kind: 'site', origin: 'product', forkable: true }
 const mcp: McpListing = { id: 'com.stripe_mcp', name: 'stripe', vendor: 'Stripe', description: 'Payments.', version: '1', transports: ['http'], featured: false, official: true }
 
@@ -41,6 +42,12 @@ describe('catalog', () => {
       price: '$250.00 per job',
     })
     expect(fromListing({ ...listing, price: '0' })).toMatchObject({ price: null })
+    // A person has their own page and asks by the hour, by the engagement, or both.
+    const person = fromListing({ ...listing, kind: 'expert', tool: '', price: '500', expert })
+    expect(person).toMatchObject({ key: 'listing:lst_1', kind: 'expert', href: '/experts/lst_1', price: '$150.00/hr · $500.00 fixed' })
+    expect(person.expert).toEqual({ ...expert, price: '500', rating: 4.5, reviews: 2 })
+    expect(fromListing({ ...listing, kind: 'expert', tool: '', price: '0', expert }).price).toBe('$150.00/hr')
+    expect(fromListing({ ...listing, kind: 'expert', tool: '' })).toMatchObject({ href: '/l/lst_1', price: '$250.00 per job' })
     expect(fromListing({ ...listing, kind: 'tool', price: '0.0025' })).toMatchObject({ price: '$0.0025 per call' })
     // The platform sells its tools from the reserved admin org; buyers know it as Hanzo.
     expect(fromListing({ ...listing, seller: { ...listing.seller, org: 'admin' } }).by).toBe('Hanzo')
@@ -76,7 +83,8 @@ describe('catalog', () => {
   it('names and routes the kinds cloud sells', () => {
     expect(KINDS.every(isKind)).toBe(true)
     expect(isKind('bot')).toBe(false)
-    expect(KINDS.map((k) => PATH[k])).toEqual(['/agents', '/personas', '/apps', '/skills', '/mcp', '/tools', '/templates'])
+    expect(KINDS.map((k) => PATH[k])).toEqual(['/agents', '/experts', '/personas', '/apps', '/skills', '/mcp', '/tools', '/templates'])
+    expect(LABEL.expert.many).toBe('Experts')
     expect(LABEL.persona.many).toBe('Personas')
     expect(LABEL.template.many).toBe('Templates')
   })
@@ -102,7 +110,7 @@ describe('catalog', () => {
     const s = shelf('skills', 'skill', [fromSkill({ name: 'x', service: 's', description: '', path: '' })], 1)
     const view = [l, a, s]
     expect(held(view)).toBe(455)
-    expect(tally({ agent: 1, tool: 2 }, view)).toEqual({ agent: 1, persona: 0, app: 453, skill: 1, mcp: 0, tool: 2, template: 0 })
+    expect(tally({ agent: 1, tool: 2 }, view)).toEqual({ agent: 1, expert: 0, persona: 0, app: 453, skill: 1, mcp: 0, tool: 2, template: 0 })
     expect(tally(null, view).app).toBe(453)
 
     // The first 48 cards: the listing, then apps; the skill waits behind all 453 apps.

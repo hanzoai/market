@@ -64,6 +64,32 @@ export function wallet(w: World, id = 'wal_acme', name = 'Treasury', chain = 'ei
   return made
 }
 
+/** A person in the shop: kind expert, hired through the same job as an agent. `profile` is what the listing's `expert` block carries. */
+export function expert(id: string, over: Row = {}, profile: Row = {}): Row {
+  return {
+    id,
+    publisherOrg: 'orbital',
+    kind: 'expert',
+    tool: '',
+    title: 'Ada Lovelace',
+    description: 'Builds on Base and ships it to Cloud.',
+    category: '',
+    price: '0',
+    currency: 'USD',
+    public: true,
+    createdAt: NOW - 86_400,
+    updatedAt: NOW - 86_400,
+    seller: { org: 'orbital', documented: true, reputation },
+    reputation,
+    links: {
+      cli: `hanzo marketplace jobs create --listing ${id} --brief <brief> --amount <usd>`,
+      mcp: { tool: 'marketplace', op: 'post_marketplace_jobs' },
+    },
+    expert: { rate: '150', areas: ['base', 'cloud'], languages: ['en', 'es'], timezone: 'America/Los_Angeles', availability: 'Weekdays 9-17 PT', verified: true, ...profile },
+    ...over,
+  }
+}
+
 /** The seller's payout address the x402 terms name. */
 const PAY_TO = '0x209693Bc6afc0C5328bA36FaF03C514EF312287C'
 /** The token contract cloud names while its operator pins none (CLOUD_X402_ASSET unset): none, the zero address in the domain. */
@@ -473,6 +499,48 @@ function ask(route: Route, q: Row) {
   return problem(route, 402, `sign the payment for job:${String(q.id)}`, { paymentRequired: Buffer.from(JSON.stringify(t)).toString('base64'), ...t })
 }
 
+/** What cloud refuses of an expert's profile (apps/marketplace): the rules the form has to respect. */
+function refuseExpert(route: Route, body: Row): Promise<void> | null {
+  const e = (body.expert ?? {}) as Row
+  if ('tool' in body) return problem(route, 422, 'tool is derived for an expert')
+  const title = typeof body.title === 'string' ? body.title.trim() : ''
+  if (!title || title.length > 200) return problem(route, 422, 'title is 1 to 200 characters')
+  if (!Array.isArray(e.areas) || !e.areas.length) return problem(route, 422, 'expert.areas needs at least one area')
+  if (!Array.isArray(e.languages) || e.languages.length < 1 || e.languages.length > 8) return problem(route, 422, 'expert.languages is 1 to 8 codes')
+  if (!e.timezone) return problem(route, 422, 'expert.timezone is required')
+  if (!(Number(body.price) > 0) && !(Number(e.rate) > 0)) return problem(route, 422, 'name a price or a rate')
+  if (!body.recipient) return problem(route, 422, 'a payout wallet is required for a paid listing')
+  return null
+}
+
+/** The shop's row for an own expert listing: the public shape, `person` left out and `verified` the staff's. */
+function shopped(w: World, mine: Row): Row {
+  const { person: _person, ...profile } = mine.expert as Row
+  return expert(String(mine.id), { publisherOrg: w.org, title: mine.title, description: mine.description, price: mine.price, seller: { org: w.org, documented: true, reputation: none }, reputation: none }, profile)
+}
+
+async function publishExpert(route: Route, w: World, body: Row) {
+  const refused = refuseExpert(route, body)
+  if (refused) return refused
+  // One expert listing per person (cloud: 409).
+  if (w.listings.some((l) => l.kind === 'expert' && (l.expert as Row).person === w.sub)) return problem(route, 409, 'You already have an expert listing.')
+  const mine = { id: `lst_${w.listings.length + 1}`, publisherOrg: w.org, tool: '', ref: '', category: '', currency: 'USD', createdAt: NOW, updatedAt: NOW, ...body, expert: { ...(body.expert as Row), verified: false, person: w.sub } }
+  w.listings.unshift(mine)
+  w.shop.unshift(shopped(w, mine))
+  return json(route, 201, mine)
+}
+
+function changeExpert(route: Route, w: World, mine: Row, body: Row) {
+  const refused = refuseExpert(route, body)
+  if (refused) return refused
+  const before = mine.expert as Row
+  // The profile is replaced whole; `verified` and `person` are not the caller's to set.
+  Object.assign(mine, body, { expert: { ...(body.expert as Row), verified: before.verified, person: before.person }, updatedAt: NOW + 60 })
+  const at = w.shop.findIndex((l) => l.id === mine.id)
+  if (at >= 0) w.shop[at] = shopped(w, mine)
+  return json(route, 200, mine)
+}
+
 async function api(route: Route, w: World) {
   const req = route.request()
   const url = new URL(req.url())
@@ -485,7 +553,8 @@ async function api(route: Route, w: World) {
   if (method === 'GET' && path === '/v1/marketplace/shop') {
     const all = hits(url, w.shop)
     const kind = url.searchParams.get('kind')
-    const hit = all.filter((l) => !kind || l.kind === kind)
+    const area = url.searchParams.get('area')
+    const hit = all.filter((l) => (!kind || l.kind === kind) && (!area || ((l.expert as Row | undefined)?.areas as string[] | undefined)?.includes(area)))
     const facets: Record<string, number> = {}
     for (const l of all) facets[String(l.kind)] = (facets[String(l.kind)] ?? 0) + 1
     return json(route, 200, { listings: paged(url, hit), total: hit.length, facets: { kind: facets, category: {}, price: {}, rating: {} } })
@@ -609,6 +678,15 @@ async function api(route: Route, w: World) {
 
   // ── listings ──
   if (method === 'GET' && path === '/v1/marketplace/listings') return json(route, 200, { listings: w.listings })
+  if (method === 'POST' && path === '/v1/marketplace/listings' && body.kind === 'expert') return publishExpert(route, w, body)
+  const patching = path.match(/^\/v1\/marketplace\/listings\/([^/]+)$/)
+  if (method === 'PATCH' && patching) {
+    const mine = w.listings.find((l) => l.id === patching[1])
+    if (!mine) return absent(route, path)
+    if (mine.kind === 'expert') return changeExpert(route, w, mine, body)
+    Object.assign(mine, body)
+    return json(route, 200, mine)
+  }
   if (method === 'POST' && path === '/v1/marketplace/listings') {
     const made = { id: `lst_${w.listings.length + 1}`, publisherOrg: w.org, currency: 'USD', createdAt: NOW, updatedAt: NOW, recipient: '', description: '', category: '', ref: 'ag_1', ...body }
     w.listings.unshift(made)

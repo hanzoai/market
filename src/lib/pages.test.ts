@@ -130,6 +130,45 @@ describe('listing pages', () => {
     expect(shopPage({ ...listing, price: '0', category: '', docs: undefined, links: { ...listing.links, docs: undefined } }).facts).toContainEqual(['Price', 'Free'])
   })
 
+  it('an expert is a person at /experts: their profile, the platform’s command, and a Service priced by the hour and/or the engagement', () => {
+    const person: ShopListing = {
+      ...listing,
+      id: 'lst_9',
+      kind: 'expert',
+      tool: '',
+      title: 'Ada Lovelace',
+      price: '500',
+      reputation: { ...rep, rating: 4.8, reviews: 23 },
+      expert: { rate: '150', areas: ['base', 'freelance'], languages: ['en', 'es'], timezone: 'America/Los_Angeles', availability: 'Weekdays 9-17 PT', verified: true },
+    }
+    const p = shopPage(person)
+    expect(p.path).toBe('/experts/lst_9')
+    expect(p.kind).toBe('expert')
+    expect(p.facts).toEqual([
+      ['Type', 'Expert'],
+      ['Areas', 'Build with Base, Freelance'],
+      ['Rate', '$150.00/hr'],
+      ['Fixed price', '$500.00'],
+      ['Languages', 'English, Spanish'],
+      ['Time zone', 'America/Los_Angeles'],
+      ['Availability', 'Weekdays 9-17 PT'],
+      ['Verified', 'Yes'],
+      ['Listed', '2026-09-30'],
+    ])
+    expect(p.get.cli).toBe(listing.links.cli)
+    expect(p.ld).toMatchObject({ '@type': 'Service', name: 'Ada Lovelace', provider: { '@type': 'Person', name: 'Ada Lovelace' }, url: `${SITE}/experts/lst_9` })
+    expect(p.ld?.offers).toEqual([
+      { '@type': 'Offer', url: `${SITE}/experts/lst_9`, priceSpecification: { '@type': 'UnitPriceSpecification', price: '150', priceCurrency: 'USD', unitCode: 'HUR' } },
+      { '@type': 'Offer', url: `${SITE}/experts/lst_9`, priceSpecification: { '@type': 'UnitPriceSpecification', price: '500', priceCurrency: 'USD' } },
+    ])
+    // No price is stated that the expert did not set.
+    const hourly = shopPage({ ...person, price: '0' })
+    expect(hourly.ld?.offers).toHaveLength(1)
+    expect(shopPage({ ...person, price: '0', expert: { ...person.expert!, rate: '0' } }).ld?.offers).toBeUndefined()
+    expect(markdown(p)).toContain('- Areas: Build with Base, Freelance')
+    expect(shelf('expert', [p]).path).toBe('/experts')
+  })
+
   it('a directory entry says it is not in the shop and names no price', () => {
     const p = directoryPage({ ...listing, id: 'lst_agent_sec', docs: 'https://github.com/hanzoai/agents', links: { ...listing.links, docs: undefined } })
     expect(p.facts).toContainEqual(['Shop', 'Not a shop listing'])
@@ -250,6 +289,10 @@ describe('shelves and the front', () => {
     expect(doc).toContain('<meta name="robots" content="noindex" />')
     expect(doc).toContain('<div id="root"></div>')
     expect(sitemaps([p])['sitemap.xml']).not.toContain('/login')
+    // The expert form is a sign-in away: a shell, not a page for search.
+    const join = hidden(PRIVATE.find((x) => x.path === '/experts/join')!)
+    expect(join).toMatchObject({ title: 'Become an expert', hidden: true, ld: null })
+    expect(sitemaps([join])['sitemap.xml']).not.toContain('/experts/join')
     expect(llmsFull([p, agents])).not.toContain('# Sign in')
   })
 })

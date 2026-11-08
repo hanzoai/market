@@ -13,6 +13,7 @@ Disallow: /login
 Disallow: /signup
 Disallow: /auth/
 Disallow: /checkout/
+Disallow: /experts/join
 Disallow: /jobs
 Disallow: /sell
 Disallow: /v1/
@@ -41,6 +42,7 @@ Disallow: /login
 Disallow: /signup
 Disallow: /auth/
 Disallow: /checkout/
+Disallow: /experts/join
 Disallow: /jobs
 Disallow: /sell
 Disallow: /v1/

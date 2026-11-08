@@ -7,7 +7,7 @@ Vite SPA, published by hanzoai/ci's site lane as slug `hanzo-market` (universe `
 `bun run build` = `vite build`, then `bun scripts/pages.ts` writes the catalog into `dist/` (about 36 s, most of it the link check):
 
 - A page per listing at `<path>/index.html` (the built shell with that page's title, description, canonical, `<link rel="alternate" type="text/markdown">`, JSON-LD and a static body inside `#root`; `createRoot` replaces the body when the app mounts), and its twin `<path>.md` (`/` -> `/index.md`).
-- Shelves (`/agents` ... `/templates`), the front (`/`), shells for the private routes (`/login`, `/jobs`, `/sell/*`: noindex, empty root, a twin pointing at `/auth.md`).
+- Shelves (`/agents`, `/experts` ... `/templates`; an expert's page is `/experts/<id>`, a `Service` in JSON-LD with an hourly and/or fixed `Offer`), the front (`/`), shells for the private routes (`/login`, `/jobs`, `/experts/join`, `/sell/*`: noindex, empty root, a twin pointing at `/auth.md`).
 - `sitemap.xml` (an index past 50,000 URLs or 50 MB), `llms.txt`, `llms-full.txt`, `404.html` (noindex app shell), `retired.json`.
 - Pure logic is `src/lib/pages.ts` (under the 80% coverage gate); the script only reads, checks and writes.
 
@@ -26,8 +26,12 @@ Removed listings: the build reads the live `sitemap.xml` and `retired.json`; a p
 
 ## Edge (universe, owned by the coordinator)
 
-hanzo-market wants `headers: [agent-link]`, `catalog: true` (linkset type on `/.well-known/api-catalog`), `markdown` on pages, and `spaIndex: 404.html` (unknown paths get the noindex shell, not the front page's content). A real 404 needs `spa: false` + `notFound: 404.html` with a `spa` route for the dynamic app paths (`/checkout/`, `/jobs/`, `/sell/listings/`, `/l/`, `/mcp/`). Trailing-slash misses (`/x/`) already answer a bare 404; every real page answers with and without the slash.
+hanzo-market wants `headers: [agent-link]`, `catalog: true` (linkset type on `/.well-known/api-catalog`), `markdown` on pages, and `spaIndex: 404.html` (unknown paths get the noindex shell, not the front page's content). A real 404 needs `spa: false` + `notFound: 404.html` with a `spa` route for the dynamic app paths (`/checkout/`, `/jobs/`, `/sell/listings/`, `/l/`, `/experts/`, `/mcp/`). Trailing-slash misses (`/x/`) already answer a bare 404; every real page answers with and without the slash.
 
 ## Test
 
-`bun run lint && bun run typecheck && bun run coverage && bun run build` (the CI gate). `bunx playwright test` (dev server, platform mocked). `buyer.spec.ts` "browse → listing" has been red since c0d7773 (catalog counts changed with the personas shelf).
+`bun run lint && bun run typecheck && bun run coverage && bun run build` (the CI gate). `bunx playwright test` (dev server, platform mocked).
+
+## Experts
+
+A listing of kind `expert` is a person, hired through the existing job flow (`POST /v1/marketplace/jobs`); there is no second job or payment path. `src/lib/expert.ts` holds everything that is not a screen: the closed area list and labels (`configure`, `base`, `commerce`, `bot`, `agents`, `cloud`, `models`, `creative`, `freelance`), the form's validation (`check`) and the exact create/patch bodies (`create`, `change`: no `tool`, `public: true`, `expert` replaced whole), the shop pager (`every`: 200 a time until `total`), and `mine` (which own listing is this person's: `expert.person` against the token's subject, its name part, or the email). `src/pages/experts.tsx` is the category and the card, `Person` in `src/pages/item.tsx` the page (so `/experts/:id` and `/l/:id` are one route component), `src/pages/join.tsx` the form. Checkout opens an expert's hire at `opening()`: the fixed price, else one hour of the rate. `verified` is staff-set and never sent.

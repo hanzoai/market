@@ -17,18 +17,26 @@ test('browse → listing → sign in → clearance → the buyer wallet signs an
   await mock(page, w)
   await page.goto('/')
 
-  // One catalog, four sources, faceted by type, counted by the servers.
+  // One catalog, every source, faceted by type, counted by the servers: the shelves stand end to end, so a page of cards is the first shelves.
   await expect(page.getByRole('heading', { name: 'Agents, personas, apps, skills, MCP servers and tools' })).toBeVisible()
   await expect(page.locator('[data-item="listing:lst_research"]')).toBeVisible()
-  await expect(page.locator('[data-item="app:hanzo/chat"]')).toBeVisible()
-  await expect(page.locator('[data-note="mcp"]')).toContainText('Sign in to include MCP servers')
-  await expect(page.getByRole('button', { name: 'All 64' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Tools 1' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^All \d+$/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Apps 1' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Skills 61' })).toBeVisible()
 
-  // Sixty-odd skills page 48 at a time.
+  // The cards page 48 at a time.
   await expect(page.locator('[data-item]')).toHaveCount(48)
-  await page.getByRole('button', { name: 'Show more · 16 left' }).click()
-  await expect(page.locator('[data-item]')).toHaveCount(64)
+  await page.getByRole('button', { name: /^Show more · \d+ left$/ }).click()
+  await expect(page.locator('[data-item]')).toHaveCount(96)
+
+  // Each type is its own view: the app, and sixty-odd skills.
+  await page.getByRole('button', { name: 'Apps 1' }).click()
+  await expect(page).toHaveURL(/\/apps$/)
+  await expect(page.locator('[data-item="app:hanzo/chat"]')).toBeVisible()
+  await page.getByRole('button', { name: 'Skills 61' }).click()
+  await expect(page).toHaveURL(/\/skills$/)
+  await page.getByRole('button', { name: 'Show more · 13 left' }).click()
+  await expect(page.locator('[data-item^="skill:"]')).toHaveCount(61)
   await expect(page.locator('[data-item="skill:vector-search"]')).toBeVisible()
 
   await page.getByRole('button', { name: /^Agents/ }).click()
