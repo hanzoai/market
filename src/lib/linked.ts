@@ -3,8 +3,8 @@
 // here authenticates or keeps a token; IAM links a provider to the account that is
 // signed in, runs the provider's consent, and brings the browser back.
 
-import { CLIENT_ID } from '~/lib/api'
-import { request, Refusal, Silence, why } from '~/lib/http'
+import { api, CLIENT_ID } from '~/lib/api'
+import { Refusal, Silence, why } from '~/lib/http'
 import { bearer } from '~/lib/token'
 
 /** The provider records of the `hanzo-market` application (`GET /v1/iam/auth/methods`). */
@@ -19,10 +19,22 @@ const rows = (body: unknown): unknown[] => {
   return Array.isArray(data) ? data : []
 }
 
-/** The id of the GitHub account linked here, or null when none is. */
+/**
+ * The id of the GitHub account linked here, or null when none is, or IAM would not
+ * say. Asked outside `request`: whatever IAM answers to this question is no word on
+ * the session, so it must not sign the reader out.
+ */
 export async function github(): Promise<string | null> {
-  const got = rows(await request<unknown>({ path: '/v1/iam/linked-accounts' }))
-  for (const r of got as { provider?: unknown; subject?: unknown }[]) {
+  const token = bearer()
+  if (!token) return null
+  let res: Response
+  try {
+    res = await fetch(`${api()}/v1/iam/linked-accounts`, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } })
+  } catch {
+    return null
+  }
+  if (!res.ok) return null
+  for (const r of rows(await res.json().catch(() => null)) as { provider?: unknown; subject?: unknown }[]) {
     if (r.provider === 'github' && typeof r.subject === 'string' && r.subject) return r.subject
   }
   return null

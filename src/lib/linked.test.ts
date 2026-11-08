@@ -36,6 +36,24 @@ describe('the identities IAM holds', () => {
     expect(await github()).toBe('7')
   })
 
+  it('is none when IAM refuses, does not answer, sends no list, or there is no session; and never signs the reader out', async () => {
+    const lapsed = vi.fn()
+    window.addEventListener('market:lapsed', lapsed)
+    serve(() => json({ status: 'error' }, 401))
+    expect(await github()).toBeNull()
+    serve(() => new Response('<html>', { status: 200 }))
+    expect(await github()).toBeNull()
+    serve(() => Promise.reject(new Error('offline')))
+    expect(await github()).toBeNull()
+    localStorage.clear()
+    serve(() => json([{ provider: 'github', subject: '1' }]))
+    const before = calls.length
+    expect(await github()).toBeNull()
+    expect(calls).toHaveLength(before)
+    window.removeEventListener('market:lapsed', lapsed)
+    expect(lapsed).not.toHaveBeenCalled()
+  })
+
   it('is none when GitHub is not linked, or IAM lists nothing', async () => {
     serve(() => json({ status: 'ok', data: [{ provider: 'google', subject: 'g1' }] }))
     expect(await github()).toBeNull()
