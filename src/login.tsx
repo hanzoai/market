@@ -10,13 +10,14 @@
 //   otherwise       @hanzo/ui/auth `SignIn`: IAM checks the password or the
 //                   code and mints the code the callback exchanges.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useIam } from '@hanzo/iam/react'
 import { Text, YStack } from '@hanzo/ui'
 import { SignIn, type Mode } from '@hanzo/ui/auth'
 import { useNavigate } from 'react-router'
 
 import { authorize, track } from '~/analytics'
+import { BAR } from '~/chrome'
 import { destination, LOGIN, SIGNUP, useClient } from '~/session'
 
 /** How long the page waits on IAM's answer about a session before it draws the form. */
@@ -53,6 +54,19 @@ export function takeMethod(): string | undefined {
   } catch {
     return undefined
   }
+}
+
+/**
+ * The page area: at least the screen below the bar, the sign-in centred in it and
+ * as tall as the card and its sign-up line need, so the footer follows them and
+ * never overlaps.
+ */
+function Area({ children }: { children: ReactNode }) {
+  return (
+    <YStack grow={1} shrink={0} items="center" justify="center" minH={`calc(100dvh - ${BAR}px)`}>
+      {children}
+    </YStack>
+  )
 }
 
 export function Login({ mode = 'login' }: { mode?: Mode }) {
@@ -92,15 +106,15 @@ export function Login({ mode = 'login' }: { mode?: Mode }) {
 
   if (!shown) {
     return (
-      <YStack flex={1} items="center" justify="center" p="$8" minH={320}>
+      <Area>
         <Text fontSize="$3" color="$soft">
           One moment…
         </Text>
-      </YStack>
+      </Area>
     )
   }
   return (
-    <YStack flex={1} items="center" justify="center" p="$6" minH={480}>
+    <Area>
       <SignIn
         mode={mode}
         site="Hanzo Market"
@@ -112,6 +126,6 @@ export function Login({ mode = 'login' }: { mode?: Mode }) {
         authorize={authorize}
         onMethod={(method) => keep(METHOD, method)}
       />
-    </YStack>
+    </Area>
   )
 }
