@@ -213,7 +213,10 @@ test('signed in, the form says what is missing, then sends exactly one create an
   await expect(publish).toBeEnabled()
 
   const sent = page.waitForRequest((r) => r.method() === 'POST' && new URL(r.url()).pathname === '/v1/marketplace/listings')
+  const created = page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/v1/marketplace/listings')
   await publish.click()
+  // The platform says the new listing is the caller's own.
+  expect(((await (await created).json()) as { expert: { self?: boolean } }).expert.self).toBe(true)
   expect((await sent).postDataJSON()).toEqual({
     kind: 'expert',
     title: 'Ada Lovelace',
@@ -265,7 +268,8 @@ test('a member with an expert listing edits it: the whole profile is patched, ne
     public: true,
     createdAt: 1,
     updatedAt: 1,
-    expert: { rate: '150', areas: ['base'], languages: ['en'], timezone: 'America/Los_Angeles', availability: 'Weekdays 9-17 PT', verified: true, person: 'acme/ada' },
+    owner: 'acme/ada',
+    expert: { rate: '150', areas: ['base'], languages: ['en'], timezone: 'America/Los_Angeles', availability: 'Weekdays 9-17 PT', verified: true },
   }
   w.listings.push(mine)
   w.shop.push(expert('lst_own', { publisherOrg: 'acme', price: '500' }, { areas: ['base'], languages: ['en'] }))
@@ -283,8 +287,10 @@ test('a member with an expert listing edits it: the whole profile is patched, ne
   await page.getByRole('group', { name: 'Areas' }).getByRole('button', { name: 'Cloud', exact: true }).click()
   await page.getByRole('textbox', { name: 'Availability' }).fill('Mornings PT')
   const sent = page.waitForRequest((r) => r.method() === 'PATCH')
+  const patched = page.waitForResponse((r) => r.request().method() === 'PATCH')
   await page.getByRole('button', { name: 'Save' }).click()
   const req = await sent
+  expect(((await (await patched).json()) as { expert: { self?: boolean } }).expert.self).toBe(true)
   expect(new URL(req.url()).pathname).toBe('/v1/marketplace/listings/lst_own')
   expect(req.postDataJSON()).toEqual({
     title: 'Ada Lovelace',
@@ -299,6 +305,46 @@ test('a member with an expert listing edits it: the whole profile is patched, ne
   // Verified is the staff's: saving did not take it.
   expect((w.listings[0].expert as Record<string, unknown>).verified).toBe(true)
   expect(w.calls.filter((c) => c.startsWith('POST /v1/marketplace/listings'))).toEqual([])
+})
+
+test('a colleague’s expert listing in the same org does not turn the form into an edit form', async ({ page }) => {
+  const w = world()
+  wallet(w)
+  w.listings.push({
+    id: 'lst_grace',
+    publisherOrg: 'acme',
+    kind: 'expert',
+    tool: '',
+    ref: '',
+    title: 'Grace Hopper',
+    description: '',
+    category: '',
+    price: '500',
+    currency: 'USD',
+    recipient: 'wal_acme',
+    public: true,
+    createdAt: 1,
+    updatedAt: 1,
+    owner: 'acme/grace',
+    expert: { rate: '0', areas: ['agents'], languages: ['en'], timezone: 'America/New_York', availability: '', verified: false },
+  })
+  await mock(page, w)
+  const read = page.waitForResponse((r) => r.request().method() === 'GET' && new URL(r.url()).pathname === '/v1/marketplace/listings')
+  await page.goto('/experts/join')
+  await signIn(page, '/experts/join')
+  // The org's listings include the colleague's, and the platform does not mark it the caller's.
+  const rows = ((await (await read).json()) as { listings: { expert: { self?: boolean } }[] }).listings
+  expect(rows).toHaveLength(1)
+  expect(rows[0].expert.self).toBeUndefined()
+
+  await expect(page.getByRole('heading', { name: 'Become an expert', level: 1 })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Name or headline' })).toHaveValue('')
+  await describe(page)
+  await page.getByRole('button', { name: 'Publish' }).click()
+  // A create, not a patch of the colleague's listing: it is the caller's own now, and the colleague's is untouched.
+  await expect(page).toHaveURL(/\/experts\/lst_2$/)
+  expect(w.calls.filter((c) => c.startsWith('PATCH'))).toEqual([])
+  expect(w.listings.map((l) => l.title)).toEqual(['Ada Lovelace', 'Grace Hopper'])
 })
 
 test('a second create is refused with the platform’s words and a way to the listing that exists', async ({ page }) => {
@@ -323,7 +369,8 @@ test('a second create is refused with the platform’s words and a way to the li
       public: true,
       createdAt: 1,
       updatedAt: 1,
-      expert: { rate: '150', areas: ['bot'], languages: ['en'], timezone: 'UTC', availability: '', verified: false, person: 'acme/ada' },
+      owner: 'acme/ada',
+      expert: { rate: '150', areas: ['bot'], languages: ['en'], timezone: 'UTC', availability: '', verified: false },
     })
     return route.fulfill({ status: 409, contentType: 'application/problem+json', body: JSON.stringify({ status: 409, detail: 'You already have an expert listing.' }) })
   })

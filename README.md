@@ -36,8 +36,9 @@ cloud, loaded only as consent allows.
 ## Sellers
 
 - `/experts/join`: any signed-in member lists themself as an expert (`kind:
-  "expert"`, no `tool`), or edits the listing they have: one per person, so a
-  second create answers 409. A positive rate or price needs the org's payout
+  "expert"`, no `tool`), or edits the listing the platform marks as theirs
+  (`expert.self`; a colleague's listing in the same org is not): one per person,
+  so a second create answers 409. A positive rate or price needs the org's payout
   wallet, chosen as `/sell/listings` chooses it. Signed out, it goes through
   `/login` and returns to the form. `verified` is the platform staff's word and
   is read-only here.

@@ -12,7 +12,6 @@ import { AREAS, change, check, create, fill, FREELANCE, language, LANGUAGES, LIM
 import { ownListings, publish, updateListing, wallets, type Listing } from '~/lib/market'
 import { free, valid } from '~/lib/money'
 import { useRead, useRun } from '~/lib/read'
-import { subject } from '~/lib/token'
 import { Gate } from '~/gate'
 import { Payout } from '~/pages/listings'
 import { useSession } from '~/session'
@@ -37,7 +36,7 @@ function Own() {
     )
   }
   if (!rows.it) return <Nothing says="Loading…" />
-  const own = mine(rows.it, subject(), session.email)
+  const own = mine(rows.it)
   return <Editor key={own?.id ?? 'new'} own={own} reread={rows.again} />
 }
 
