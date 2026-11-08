@@ -226,7 +226,7 @@ describe('writing a profile', () => {
       currency: 'USD',
       recipient: 'wal_acme',
       public: true,
-      expert: { ...expert, person: 'acme/ada' },
+      expert: { ...expert, self: true },
       createdAt: 1,
       updatedAt: 1,
     }
@@ -244,15 +244,12 @@ describe('writing a profile', () => {
     expect(fill({ ...own, price: '500' }, 'UTC').price).toBe('500')
   })
 
-  it('finds the listing that is this person’s by the subject, the name or the email', () => {
-    const own = (person: string | undefined, id = 'lst_1', kind: Listing['kind'] = 'expert'): Listing =>
-      ({ id, kind, expert: person === undefined ? { ...expert } : { ...expert, person } }) as Listing
-    const rows = [own('acme/grace', 'lst_0'), own('acme/ada', 'lst_1'), own('ada@acme.test', 'lst_2'), own('ada', 'lst_3'), own(undefined, 'lst_4'), own('acme/ada', 'lst_5', 'agent')]
-    expect(mine(rows, 'acme/ada', null)?.id).toBe('lst_1')
-    expect(mine(rows.slice(2), 'acme/ada', 'ada@acme.test')?.id).toBe('lst_2')
-    expect(mine(rows.slice(3), 'acme/ada', null)?.id).toBe('lst_3')
-    expect(mine(rows, 'acme/lin', null)).toBeNull()
-    expect(mine(rows, undefined, null)).toBeNull()
-    expect(mine([], 'acme/ada', 'ada@acme.test')).toBeNull()
+  it('finds the listing the platform marks as the caller’s own, never a colleague’s', () => {
+    const own = (id: string, self?: boolean, kind: Listing['kind'] = 'expert'): Listing => ({ id, kind, expert: { ...expert, ...(self ? { self } : {}) } }) as Listing
+    const rows = [own('lst_0'), own('lst_1', true), own('lst_2', true, 'agent'), own('lst_3', true)]
+    expect(mine(rows)?.id).toBe('lst_1')
+    expect(mine([own('lst_0'), own('lst_2', true, 'agent')])).toBeNull()
+    expect(mine([{ id: 'lst_4', kind: 'expert' } as Listing])).toBeNull()
+    expect(mine([])).toBeNull()
   })
 })

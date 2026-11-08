@@ -513,32 +513,43 @@ function refuseExpert(route: Route, body: Row): Promise<void> | null {
   return null
 }
 
-/** The shop's row for an own expert listing: the public shape, `person` left out and `verified` the staff's. */
+/**
+ * An org's listing as cloud answers the caller: an expert row carries `expert.self`
+ * when the caller is that expert and omits it otherwise. `owner` is this mock's own
+ * bookkeeping of whose a row is, and is never sent.
+ */
+function seen(w: World, row: Row): Row {
+  const { owner, ...rest } = row
+  if (rest.kind !== 'expert') return rest
+  return { ...rest, expert: { ...(rest.expert as Row), ...(owner === w.sub ? { self: true } : {}) } }
+}
+
+/** The shop's row for an expert listing: the public shape, which never says whose it is, and `verified` the staff's. */
 function shopped(w: World, mine: Row): Row {
-  const { person: _person, ...profile } = mine.expert as Row
-  return expert(String(mine.id), { publisherOrg: w.org, title: mine.title, description: mine.description, price: mine.price, seller: { org: w.org, documented: true, reputation: none }, reputation: none }, profile)
+  return expert(String(mine.id), { publisherOrg: w.org, title: mine.title, description: mine.description, price: mine.price, seller: { org: w.org, documented: true, reputation: none }, reputation: none }, mine.expert as Row)
 }
 
 async function publishExpert(route: Route, w: World, body: Row) {
   const refused = refuseExpert(route, body)
   if (refused) return refused
-  // One expert listing per person (cloud: 409).
-  if (w.listings.some((l) => l.kind === 'expert' && (l.expert as Row).person === w.sub)) return problem(route, 409, 'You already have an expert listing.')
-  const mine = { id: `lst_${w.listings.length + 1}`, publisherOrg: w.org, tool: '', ref: '', category: '', currency: 'USD', createdAt: NOW, updatedAt: NOW, ...body, expert: { ...(body.expert as Row), verified: false, person: w.sub } }
+  // One expert listing per person (cloud: 409); a colleague's in the same org does not count.
+  if (w.listings.some((l) => l.kind === 'expert' && l.owner === w.sub)) return problem(route, 409, 'You already have an expert listing.')
+  const mine = { id: `lst_${w.listings.length + 1}`, publisherOrg: w.org, tool: '', ref: '', category: '', currency: 'USD', createdAt: NOW, updatedAt: NOW, ...body, owner: w.sub, expert: { ...(body.expert as Row), verified: false } }
   w.listings.unshift(mine)
   w.shop.unshift(shopped(w, mine))
-  return json(route, 201, mine)
+  return json(route, 201, seen(w, mine))
 }
 
 function changeExpert(route: Route, w: World, mine: Row, body: Row) {
   const refused = refuseExpert(route, body)
   if (refused) return refused
+  if (mine.owner !== w.sub) return problem(route, 403, 'only the expert may change their listing')
   const before = mine.expert as Row
-  // The profile is replaced whole; `verified` and `person` are not the caller's to set.
-  Object.assign(mine, body, { expert: { ...(body.expert as Row), verified: before.verified, person: before.person }, updatedAt: NOW + 60 })
+  // The profile is replaced whole; `verified` is not the caller's to set.
+  Object.assign(mine, body, { expert: { ...(body.expert as Row), verified: before.verified }, updatedAt: NOW + 60 })
   const at = w.shop.findIndex((l) => l.id === mine.id)
   if (at >= 0) w.shop[at] = shopped(w, mine)
-  return json(route, 200, mine)
+  return json(route, 200, seen(w, mine))
 }
 
 async function api(route: Route, w: World) {
@@ -677,7 +688,7 @@ async function api(route: Route, w: World) {
   if (method === 'GET' && path === '/v1/tool/mcp/servers') return json(route, 200, { servers: [] })
 
   // ── listings ──
-  if (method === 'GET' && path === '/v1/marketplace/listings') return json(route, 200, { listings: w.listings })
+  if (method === 'GET' && path === '/v1/marketplace/listings') return json(route, 200, { listings: w.listings.map((l) => seen(w, l)) })
   if (method === 'POST' && path === '/v1/marketplace/listings' && body.kind === 'expert') return publishExpert(route, w, body)
   const patching = path.match(/^\/v1\/marketplace\/listings\/([^/]+)$/)
   if (method === 'PATCH' && patching) {

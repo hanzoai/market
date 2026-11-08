@@ -64,8 +64,8 @@ export interface Listing {
   recipient: string
   public: boolean
   docs?: string
-  /** Only on kind expert; `person` is who the listing is. */
-  expert?: Expert & { person?: string }
+  /** Only on kind expert; `self` is the platform's word that the caller is that expert, omitted when they are not. */
+  expert?: Expert & { self?: boolean }
   createdAt: number
   updatedAt: number
 }

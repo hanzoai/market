@@ -202,12 +202,5 @@ export function fill(l: Listing | null, timezone: string): Form {
   }
 }
 
-/**
- * The expert listing that is this person's: the platform names a listing's
- * `person`, and the token names the person by its subject ("org/name"), the name
- * alone, or the email.
- */
-export function mine(rows: Listing[], sub: string | undefined, email: string | null): Listing | null {
-  const who = new Set([sub, sub?.split('/').pop(), email].filter((w): w is string => Boolean(w)))
-  return rows.find((r) => r.kind === 'expert' && r.expert?.person !== undefined && who.has(r.expert.person)) ?? null
-}
+/** The expert listing that is the caller's own: the platform marks it `self`, and an org's other members' listings are not. */
+export const mine = (rows: Listing[]): Listing | null => rows.find((r) => r.kind === 'expert' && r.expert?.self) ?? null
