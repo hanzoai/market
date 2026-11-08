@@ -8,7 +8,9 @@
 import { GATEWAY, web } from '~/lib/api'
 import { fromApp, fromListing, fromMcp, fromPersona, fromSkill, fromTemplate, LABEL, PATH, type Item } from '~/lib/catalog'
 import { docs, listingDetail, mcpCall } from '~/lib/detail'
+import { facts as expertFacts } from '~/lib/expert'
 import { KINDS, type AppEntry, type Kind, type McpListing, type ShopListing, type SkillEntry } from '~/lib/market'
+import { free } from '~/lib/money'
 import type { PersonaEntry } from '~/lib/personas'
 import type { TemplateEntry } from '~/lib/templates'
 
@@ -77,10 +79,41 @@ function software(item: Item, category: string | undefined, more: Record<string,
 
 const fact = (k: string, v: string | undefined): [string, string][] => (v ? [[k, v]] : [])
 
+/** An expert, as a Service a person provides: an Offer for a fixed price, a price per hour for a rate. */
+function service(item: Item, l: ShopListing): Record<string, unknown> {
+  const p = item.expert
+  const specs = [
+    ...(p && !free(p.rate) ? [{ '@type': 'UnitPriceSpecification', price: p.rate, priceCurrency: l.currency, unitCode: 'HUR' }] : []),
+    ...(p && !free(p.price) ? [{ '@type': 'UnitPriceSpecification', price: p.price, priceCurrency: l.currency }] : []),
+  ]
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Service',
+    name: item.title,
+    ...(item.summary ? { description: item.summary } : {}),
+    url: SITE + item.href,
+    provider: { '@type': 'Person', name: item.title },
+    ...(specs.length ? { offers: specs.map((priceSpecification) => ({ '@type': 'Offer', priceSpecification, url: SITE + item.href })) } : {}),
+  }
+}
+
 /** A seller's listing, as GET /v1/marketplace/shop answers it: the one source with a price. */
 export function shopPage(l: ShopListing): Page {
   const item = fromListing(l)
   const doc = docs(l.links.docs ?? l.docs)
+  if (item.expert) {
+    return {
+      path: item.href,
+      title: item.title,
+      kind: item.kind,
+      summary: item.summary,
+      facts: [['Type', LABEL.expert.one], ...expertFacts(item.expert), ['Listed', day(l.createdAt)]],
+      get: { cli: l.links.cli, mcp: mcpCall(listingDetail(l)) },
+      links: [{ label: 'This listing as JSON (no key)', href: `${GATEWAY}/v1/marketplace/shop/${encodeURIComponent(l.id)}` }],
+      ld: service(item, l),
+      modified: day(l.updatedAt),
+    }
+  }
   return {
     path: item.href,
     title: item.title,
@@ -236,6 +269,7 @@ export const outside = (page: Page): string[] => [
 
 const SHELF: Record<Kind, string> = {
   agent: 'Agents to hire for a job, paid at release, and the agents of the storefront’s directory.',
+  expert: 'People to book for a job: what they work on, their languages, hours and rate.',
   persona: 'Open-source personas from @hanzo/personas: who a model speaks as, and how it reasons.',
   app: 'Projects, apps and sites built on the Hanzo platform, from GET /v1/catalog.',
   skill: 'Skills from the platform’s directory: one SKILL.md per operation, for an agent to load.',
@@ -307,6 +341,7 @@ export const PRIVATE: { path: string; title: string; summary: string }[] = [
   { path: '/login', title: 'Sign in', summary: 'People sign in to Hanzo Market here with Hanzo ID.' },
   { path: '/signup', title: 'Create an account', summary: 'People create a Hanzo account here.' },
   { path: '/auth/callback', title: 'Signing in', summary: 'Where Hanzo ID returns a person after sign-in.' },
+  { path: '/experts/join', title: 'Become an expert', summary: 'A member lists themself as an expert people can book for a job.' },
   { path: '/jobs', title: 'Jobs', summary: 'A buyer’s jobs: open, accepted, delivered, released or disputed.' },
   { path: '/sell', title: 'Sell', summary: 'An organization sets itself up as a seller: identity, tax form, payout wallet.' },
   { path: '/sell/listings', title: 'Your listings', summary: 'The listings a seller’s organization publishes.' },

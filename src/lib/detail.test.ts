@@ -56,6 +56,22 @@ describe('listing detail', () => {
     expect(docs(undefined)).toBeNull()
   })
 
+  it('hires an expert through checkout, and states them instead of a tool', () => {
+    const person: ShopListing = {
+      ...base,
+      kind: 'expert',
+      tool: '',
+      title: 'Ada Lovelace',
+      price: '0',
+      expert: { rate: '150', areas: ['base'], languages: ['en'], timezone: 'UTC', availability: '', verified: false },
+    }
+    const d = listingDetail(person)
+    expect(d.get).toEqual({ how: 'checkout', listing: 'lst_1', hire: true })
+    expect(d.item).toMatchObject({ kind: 'expert', href: '/experts/lst_1', price: '$150.00/hr' })
+    expect(d.facts.map(([k]) => k)).toEqual(['Seller', 'Tax form', 'Areas', 'Rate', 'Languages', 'Time zone', 'Verified', 'Listed'])
+    expect(d.facts).not.toContainEqual(['Sells', ''])
+  })
+
   it('opens an app where it lives', () => {
     const d = appDetail({
       id: 'hanzo/chat',

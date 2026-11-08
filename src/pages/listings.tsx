@@ -24,6 +24,7 @@ import {
   wallets,
   type Kind,
   type Listing,
+  type Wallet,
 } from '~/lib/market'
 import { each, free, valid } from '~/lib/money'
 import { useRead, useRun, type Read } from '~/lib/read'
@@ -214,26 +215,7 @@ function Form() {
               name="price"
               help="What a job is offered at; the buyer can name another amount at checkout. 0 lists it without a price."
             />
-            {priced ? (
-              mine.it?.wallets.length ? (
-                <Choice
-                  label="Paid into"
-                  value={payTo}
-                  set={setRecipient}
-                  of={mine.it.wallets.map((w) => ({ value: w.id, label: `${w.name} · ${w.chain}` }))}
-                />
-              ) : (
-                <YStack gap="$2" flex={1} minW={200}>
-                  <Text fontSize="$2" color="$soft">
-                    Paid into
-                  </Text>
-                  <Text fontSize="$2" color="$quiet">
-                    A priced listing needs a payout wallet.
-                  </Text>
-                  <Go to="/sell">Create one</Go>
-                </YStack>
-              )
-            ) : null}
+            {priced ? <Payout wallets={mine.it?.wallets ?? []} value={payTo} set={setRecipient} /> : null}
           </Fields>
           <Field label="Documentation link (optional)" value={docs} set={setDocs} hint="https://docs.…" name="docs" />
           <Tick label="Public — list it in the catalog" checked={open} set={setOpen} />
@@ -250,6 +232,22 @@ function Form() {
         </Panel>
       </Section>
     </Page>
+  )
+}
+
+/** The wallet a priced listing is paid into: the org's own, or a way to make one. */
+export function Payout({ wallets: own, value, set }: { wallets: Wallet[]; value: string; set: (id: string) => void }) {
+  if (own.length) return <Choice label="Paid into" value={value} set={set} of={own.map((w) => ({ value: w.id, label: `${w.name} · ${w.chain}` }))} />
+  return (
+    <YStack gap="$2" flex={1} minW={200}>
+      <Text fontSize="$2" color="$soft">
+        Paid into
+      </Text>
+      <Text fontSize="$2" color="$quiet">
+        A priced listing needs a payout wallet.
+      </Text>
+      <Go to="/sell">Create one</Go>
+    </YStack>
   )
 }
 

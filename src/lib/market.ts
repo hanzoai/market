@@ -13,10 +13,10 @@ import { held, inflight } from '~/lib/job'
 import { dollars } from '~/lib/money'
 import { digest, nonce, payment, rail, terms, vet, type Authorization } from '~/lib/x402'
 
-/** What a listing sells. A tool is the platform's, sold per call; everything else is hired for a job. */
-export type Kind = 'agent' | 'persona' | 'app' | 'skill' | 'mcp' | 'tool' | 'template'
+/** What a listing sells. A tool is the platform's, sold per call; an expert is a person; everything else is hired for a job. */
+export type Kind = 'agent' | 'expert' | 'persona' | 'app' | 'skill' | 'mcp' | 'tool' | 'template'
 /** In the order the shop facets them. */
-export const KINDS: readonly Kind[] = ['agent', 'persona', 'app', 'skill', 'mcp', 'tool', 'template']
+export const KINDS: readonly Kind[] = ['agent', 'expert', 'persona', 'app', 'skill', 'mcp', 'tool', 'template']
 
 // ── /v1/marketplace: the shop and an org's listings ─────────────────────────
 
@@ -26,6 +26,23 @@ export interface Reputation {
   reviews: number
   installs: number
   jobs: { completed: number; disputed: number }
+}
+
+/** What an expert writes about themself: `rate` is an hourly USD decimal, "0" when none. */
+export interface ExpertProfile {
+  rate: string
+  /** Slugs from the closed list in `~/lib/expert`. */
+  areas: string[]
+  /** Lowercase BCP 47 codes. */
+  languages: string[]
+  /** An IANA time zone id. */
+  timezone: string
+  availability: string
+}
+
+/** An expert as the shop shows them; `verified` is the platform staff's word, never the expert's. */
+export interface Expert extends ExpertProfile {
+  verified: boolean
 }
 
 /** One of the caller org's own listings. */
@@ -47,6 +64,8 @@ export interface Listing {
   recipient: string
   public: boolean
   docs?: string
+  /** Only on kind expert; `person` is who the listing is. */
+  expert?: Expert & { person?: string }
   createdAt: number
   updatedAt: number
 }
@@ -64,6 +83,8 @@ export interface ShopListing {
   currency: string
   public: boolean
   docs?: string
+  /** Only on kind expert. */
+  expert?: Expert
   createdAt: number
   updatedAt: number
   /** What anyone may know about the seller: documented is a certified, valid tax form. */
@@ -94,10 +115,23 @@ export interface PublishReq {
   docs?: string
 }
 
-export type ListingPatch = Partial<Omit<PublishReq, 'tool' | 'kind'>>
+/** An expert's listing: no `tool`, which the platform derives. Any signed-in member may publish one. */
+export interface ExpertReq {
+  kind: 'expert'
+  title: string
+  description: string
+  /** A fixed engagement price in USD, "0" when none. */
+  price: string
+  /** Payout wallet id in the caller's org; required for any positive price or rate. */
+  recipient: string
+  public: true
+  expert: ExpertProfile
+}
 
-/** GET /v1/marketplace/shop — every public listing, any org, no sign-in. 48 a page by default, 200 at most. */
-export const shop = (q: { q?: string; kind?: Kind | ''; limit?: number; offset?: number }) =>
+export type ListingPatch = Partial<Omit<PublishReq, 'tool' | 'kind'>> & { expert?: ExpertProfile }
+
+/** GET /v1/marketplace/shop — every public listing, any org, no sign-in. 48 a page by default, 200 at most. `area` narrows experts. */
+export const shop = (q: { q?: string; kind?: Kind | ''; area?: string; limit?: number; offset?: number }) =>
   request<Shop>({ path: '/v1/marketplace/shop', query: q, anonymous: true })
 
 /** GET /v1/marketplace/shop/{id}. */
@@ -107,8 +141,8 @@ export const shopListing = (id: string) =>
 /** GET /v1/marketplace/listings — the caller org's own listings. */
 export const ownListings = () => request<{ listings: Listing[] }>({ path: '/v1/marketplace/listings' })
 
-/** POST /v1/marketplace/listings → 201. An org admin publishes. */
-export const publish = (req: PublishReq) =>
+/** POST /v1/marketplace/listings → 201. An org admin publishes; any member may publish an expert. */
+export const publish = (req: PublishReq | ExpertReq) =>
   request<Listing>({ method: 'POST', path: '/v1/marketplace/listings', body: req })
 
 /** PATCH /v1/marketplace/listings/{id}. */

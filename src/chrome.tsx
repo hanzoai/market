@@ -9,6 +9,7 @@ import { useSession } from '~/session'
 
 const NAV: HanzoNav[] = [
   { id: 'agents', label: 'Agents', href: '/agents', glyph: 'bot', hint: 'Hire or run an agent' },
+  { id: 'experts', label: 'Experts', href: '/experts', glyph: 'users', hint: 'Book a person for a job' },
   { id: 'personas', label: 'Personas', href: '/personas', glyph: 'user', hint: '1,042 open-source personas' },
   { id: 'apps', label: 'Apps', href: '/apps', glyph: 'blocks', hint: 'Apps built on Hanzo' },
   { id: 'skills', label: 'Skills', href: '/skills', glyph: 'spark', hint: 'Skills an agent can load' },

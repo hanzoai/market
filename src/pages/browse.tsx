@@ -2,9 +2,8 @@
 // together and faceted by type. Each source is paged from its server, and every
 // count is the server's total, so everything a source holds is reachable.
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Box, Text, XStack, YStack } from '@hanzo/ui'
-import { Search } from 'lucide-react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { cards, fromApp, fromListing, fromMcp, fromPersona, fromSkill, fromTemplate, held, LABEL, matches, PATH, shown, tally, wanted, type Item, type Shelf, type Source } from '~/lib/catalog'
@@ -15,7 +14,8 @@ import { mergeMcpCatalog, mergeShop } from '~/lib/registry'
 import { templates } from '~/lib/templates'
 import { useRead, useRun } from '~/lib/read'
 import { useSession } from '~/session'
-import { Act, Column, Eyebrow, Failed, Go, Nothing, Panel, Refusal } from '~/ui'
+import { ExpertCard } from '~/pages/experts'
+import { Act, Column, Eyebrow, Failed, Go, Nothing, Panel, Refusal, Find } from '~/ui'
 
 /** Cards drawn per page, and asked of a server at a time. */
 export const PAGE = 48
@@ -108,8 +108,6 @@ export function Browse({ kind }: { kind?: Kind }) {
   const [params, setParams] = useSearchParams()
   const q = params.get('q') ?? ''
   const type: Kind | '' = kind ?? ''
-  const [draft, setDraft] = useState(q)
-  useEffect(() => setDraft(q), [q])
 
   const view = `${q}\n${type}\n${session.signedIn}`
   const found = useRead(session.loading ? null : () => find(q, type, session.signedIn), [view, session.loading])
@@ -152,31 +150,7 @@ export function Browse({ kind }: { kind?: Kind }) {
         <Text fontSize="$4" color="$soft" text="center" maxW={680}>
           Install open-source agents, personas, skills, connectors, and MCP servers, hire an agent for a job, or contribute and get paid over x402 when people use your work.
         </Text>
-        <form
-          role="search"
-          onSubmit={(e) => {
-            e.preventDefault()
-            search(draft.trim())
-          }}
-          style={{ width: '100%', maxWidth: 640 }}
-        >
-          <XStack gap="$2" items="center" px="$4" py="$2" rounded="$10" borderWidth={1} borderColor="$borderColor">
-            <Search size={16} aria-hidden />
-            <input
-              type="search"
-              aria-label="Search the marketplace"
-              placeholder="Search agents, apps, skills, MCP servers"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              style={{ flex: 1, background: 'transparent', border: 0, outline: 'none', color: 'inherit', font: 'inherit', fontSize: 'var(--text-base)', minWidth: 0 }}
-            />
-            <button type="submit" style={{ background: 'transparent', border: 0, color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
-              <Text fontSize="$2" color="$soft">
-                Search
-              </Text>
-            </button>
-          </XStack>
-        </form>
+        <Find q={q} label="Search the marketplace" hint="Search agents, apps, skills, MCP servers" onSearch={search} />
         <XStack gap="$2" flexWrap="wrap" justify="center" role="group" aria-label="Type">
           <Act on={!type} onPress={() => facet('')}>
             All {found.it ? all : ''}
@@ -246,6 +220,7 @@ export function Browse({ kind }: { kind?: Kind }) {
 }
 
 export function Card({ item }: { item: Item }) {
+  if (item.expert) return <ExpertCard item={item} expert={item.expert} />
   return (
     <Link to={item.href} style={{ textDecoration: 'none', display: 'flex' }} data-item={item.key}>
       <YStack

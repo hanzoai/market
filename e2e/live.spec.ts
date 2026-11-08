@@ -35,3 +35,15 @@ test('@live signing in stays on this site: /login draws the sign-in and nothing 
   await expect(page.getByRole('textbox', { name: 'Email' })).toBeVisible()
   expect(issuer).toEqual([])
 })
+
+test('@live /experts renders the Experts category and submits nothing', async ({ page }) => {
+  const writes: string[] = []
+  page.on('request', (r) => {
+    if (r.method() !== 'GET' && new URL(r.url()).pathname.startsWith('/v1/marketplace')) writes.push(`${r.method()} ${new URL(r.url()).pathname}`)
+  })
+  await page.goto('/experts')
+  await expect(page.getByRole('heading', { name: 'Experts', level: 1 })).toBeVisible()
+  await expect(page.getByRole('searchbox', { name: 'Search experts' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Become an expert' })).toHaveAttribute('href', '/experts/join')
+  expect(writes).toEqual([])
+})

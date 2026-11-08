@@ -83,7 +83,7 @@ test('search_market finds listings across shelves, with a price only where the s
   expect(personas.ok.hits.every((h) => h.kind === 'persona')).toBe(true)
 
   expect(await run(page, 'search_market', { query: ' ' })).toEqual({ failed: 'query is empty' })
-  expect(await run(page, 'search_market', { query: 'x', kind: 'nft' })).toEqual({ failed: expect.stringMatching(/^kind is one of agent, persona/) })
+  expect(await run(page, 'search_market', { query: 'x', kind: 'nft' })).toEqual({ failed: expect.stringMatching(/^kind is one of agent, expert, persona/) })
   // Searching is reads only.
   expect(w.calls.filter((c) => !c.startsWith('GET '))).toEqual([])
 })

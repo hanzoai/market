@@ -4,6 +4,7 @@
 
 import { web } from '~/lib/api'
 import { fromApp, fromListing, fromMcp, fromPersona, fromSkill, fromTemplate, sellerName, type Item } from '~/lib/catalog'
+import { facts as expertFacts } from '~/lib/expert'
 import type { AppEntry, McpListing, Reputation, ShopListing, SkillEntry } from '~/lib/market'
 import { free } from '~/lib/money'
 import { findPersona, personaSummary } from '~/lib/personas'
@@ -44,13 +45,14 @@ export function docs(at: string | undefined): string | null {
 export function listingDetail(l: ShopListing): Detail {
   const tool = l.kind === 'tool'
   const get: Get = tool && free(l.price) ? { how: 'install', tool: l.tool } : { how: 'checkout', listing: l.id, hire: !tool }
+  const item = fromListing(l)
   return {
-    item: fromListing(l),
+    item,
     body: l.description,
     facts: [
       ['Seller', sellerName(l.seller.org)],
       ['Tax form', l.seller.documented ? 'Certified' : 'Not on file'],
-      [tool ? 'Tool' : 'Sells', l.tool],
+      ...(item.expert ? expertFacts(item.expert) : ([[tool ? 'Tool' : 'Sells', l.tool]] as [string, string][])),
       ...(l.category ? ([['Category', l.category]] as [string, string][]) : []),
       ['Listed', new Date(l.createdAt * 1000).toISOString().slice(0, 10)],
     ],
