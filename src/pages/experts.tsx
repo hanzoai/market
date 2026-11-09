@@ -120,12 +120,7 @@ export function Experts() {
 
   // Each change starts from the address as it is this instant, not as this render saw it:
   // a router applies a change a moment after it is made, and two quick ones would lose the first.
-  const set = (key: Parameters<typeof keep>[1], value: string | number | boolean) => {
-    const next = keep(new URLSearchParams(window.location.search), key, value)
-    // A product ranks by its own score, so choosing one leaves the other orders.
-    if (key === 'product' && value) next.delete('sort')
-    setParams(next)
-  }
+  const set = (key: Parameters<typeof keep>[1], value: string | number | boolean) => setParams(keep(new URLSearchParams(window.location.search), key, value))
   const any = (label: string) => ({ value: '', label })
 
   return (

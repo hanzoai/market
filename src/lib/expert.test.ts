@@ -356,9 +356,11 @@ describe('writing a profile', () => {
 describe('the directory in the address', () => {
   it('reads what the address asks and drops what this list does not know', () => {
     const p = new URLSearchParams('q=ada&area=base&sort=level&dir=asc&language=es&verified=true&minLevel=2&badge=zen-pioneer&tokenTier=1b&rateMin=50&rateMax=200.5&product=kai')
-    expect(shelf(p)).toEqual({ q: 'ada', area: 'base', sort: 'level', dir: 'asc', language: 'es', verified: true, minLevel: 2, badge: 'zen-pioneer', tokenTier: '1b', rateMin: '50', rateMax: '200.5', product: 'kai' })
+    expect(shelf(p)).toEqual({ q: 'ada', area: 'base', sort: '', dir: 'asc', language: 'es', verified: true, minLevel: 2, badge: 'zen-pioneer', tokenTier: '1b', rateMin: '50', rateMax: '200.5', product: 'kai' })
     const junk = new URLSearchParams('area=web3&sort=luck&dir=sideways&language=xx&verified=yes&minLevel=9&badge=x&tokenTier=2m&rateMin=lots&rateMax=-1&product=web3')
     expect(shelf(junk)).toEqual({ q: '', area: '', sort: '', dir: 'desc', language: '', verified: false, minLevel: 0, badge: '', tokenTier: '', rateMin: '', rateMax: '', product: '' })
+    // A product is the order: an address that names a sort too is read as the product.
+    expect(shelf(new URLSearchParams('sort=level&product=base'))).toMatchObject({ sort: '', product: 'base' })
     expect(shelf(new URLSearchParams())).toEqual({ q: '', area: '', sort: '', dir: 'desc', language: '', verified: false, minLevel: 0, badge: '', tokenTier: '', rateMin: '', rateMax: '', product: '' })
   })
 
@@ -377,6 +379,9 @@ describe('the directory in the address', () => {
     expect(keep(new URLSearchParams('minLevel=2'), 'minLevel', 0).toString()).toBe('')
     expect(keep(new URLSearchParams('dir=asc'), 'dir', 'desc').toString()).toBe('')
     expect(keep(new URLSearchParams(), 'dir', 'asc').toString()).toBe('dir=asc')
+    expect(keep(new URLSearchParams('sort=level&area=base'), 'product', 'kai').toString()).toBe('area=base&product=kai')
+    expect(keep(new URLSearchParams('product=kai'), 'sort', 'rate').toString()).toBe('sort=rate')
+    expect(keep(new URLSearchParams('sort=rate'), 'product', '').toString()).toBe('sort=rate')
     expect(p.toString()).toBe('area=base')
   })
 

@@ -212,10 +212,12 @@ export interface Shelf {
 /** The directory as an address asks for it. What this list does not know is not asked. */
 export function shelf(p: URLSearchParams): Shelf {
   const level = Number(p.get('minLevel'))
+  const product = among(PRODUCTS, p.get('product'))
   return {
     q: p.get('q') ?? '',
     area: among(AREAS, p.get('area')),
-    sort: among(SORTS, p.get('sort')),
+    // A product is the order, so an address that names both is read as the product.
+    sort: product ? '' : among(SORTS, p.get('sort')),
     dir: p.get('dir') === 'asc' ? 'asc' : 'desc',
     language: (LANGUAGES as readonly string[]).includes(p.get('language') ?? '') ? (p.get('language') ?? '') : '',
     verified: p.get('verified') === 'true',
@@ -224,7 +226,7 @@ export function shelf(p: URLSearchParams): Shelf {
     tokenTier: among(TIERS, p.get('tokenTier')),
     rateMin: dollar(p.get('rateMin')),
     rateMax: dollar(p.get('rateMax')),
-    product: among(PRODUCTS, p.get('product')),
+    product,
   }
 }
 
@@ -249,11 +251,17 @@ export function asked(s: Shelf, limit: number, offset: number): ShopQuery {
   }
 }
 
-/** The address with one more thing set, or cleared when it is empty, so a view can be passed along. */
+/**
+ * The address with one more thing set, or cleared when it is empty, so a view can
+ * be passed along. A sort and a product are each the order, so setting one leaves
+ * the other.
+ */
 export function keep(p: URLSearchParams, key: keyof Shelf, value: string | number | boolean): URLSearchParams {
   const next = new URLSearchParams(p)
   if (value === '' || value === 0 || value === false || (key === 'dir' && value === 'desc')) next.delete(key)
   else next.set(key, String(value))
+  if (value && key === 'sort') next.delete('product')
+  if (value && key === 'product') next.delete('sort')
   return next
 }
 
