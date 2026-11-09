@@ -3,19 +3,32 @@ import {
   areaLabel,
   change,
   check,
+  asked,
+  availability,
   create,
   every,
   facts,
   fees,
   fill,
   FREELANCE,
+  hoursOf,
   isArea,
+  isProduct,
+  keep,
   language,
   LANGUAGES,
+  link,
   mine,
   opening,
   PAGE,
+  productLabel,
+  PRODUCTS,
   profile,
+  refresh,
+  shelf,
+  SORTS,
+  start,
+  TIERS,
   zone,
   zones,
   type Form,
@@ -52,7 +65,11 @@ const form: Form = {
   areas: ['cloud', 'base'],
   languages: ['en', 'es'],
   timezone: 'America/Los_Angeles',
-  availability: ' Weekdays 9-17 PT ',
+  hours: 'part-time',
+  note: ' Weekdays 9-17 PT ',
+  fee: 'rate',
+  skills: ['TypeScript', 'Go'],
+  links: ['https://github.com/ada'],
   recipient: 'wal_acme',
 }
 
@@ -122,7 +139,7 @@ describe('reading the shop', () => {
   })
 
   it('reads a profile from an expert and from nothing else', () => {
-    expect(profile(row('a'))).toEqual({ ...expert, price: '0', rating: 4.8, reviews: 23 })
+    expect(profile(row('a'))).toEqual({ ...expert, price: '0', rating: 4.8, reviews: 23, jobs: 5 })
     expect(profile(row('a', { kind: 'agent' }))).toBeUndefined()
     expect(profile(row('a', { expert: undefined }))).toBeUndefined()
   })
@@ -177,7 +194,13 @@ describe('writing a profile', () => {
     [{ languages: ['EN'] }, 'A language is a lowercase code such as en or zh-cn.'],
     [{ timezone: '' }, 'Pick a time zone.'],
     [{ timezone: 'Mars/Base' }, 'Pick a time zone.'],
-    [{ availability: 'x'.repeat(513) }, 'Availability is at most 512 characters.'],
+    [{ hours: '', note: '  ' }, 'Pick your availability.'],
+    [{ note: 'x'.repeat(513) }, 'Availability is at most 512 characters.'],
+    [{ skills: Array.from({ length: 21 }, (_, i) => `s${i}`) }, 'A skill is at most 40 characters, and there are at most 20.'],
+    [{ skills: ['x'.repeat(41)] }, 'A skill is at most 40 characters, and there are at most 20.'],
+    [{ skills: [' '] }, 'A skill is at most 40 characters, and there are at most 20.'],
+    [{ links: ['http://example.com'] }, 'A link is an https address, and there are at most 8.'],
+    [{ links: Array.from({ length: 9 }, (_, i) => `https://example.com/${i}`) }, 'A link is an https address, and there are at most 8.'],
     [{ rate: 'a lot' }, 'A rate or a price is a dollar amount to the cent.'],
     [{ price: '12.345' }, 'A rate or a price is a dollar amount to the cent.'],
     [{ rate: '', price: '' }, 'Name an hourly rate or a fixed price.'],
@@ -188,7 +211,7 @@ describe('writing a profile', () => {
   })
 
   it('accepts the limits exactly', () => {
-    expect(check({ ...form, title: 'x'.repeat(200), description: 'x'.repeat(4096), availability: 'x'.repeat(512), languages: ['en', 'es', 'fr', 'de', 'pt', 'ja', 'ko', 'ru'] })).toBeNull()
+    expect(check({ ...form, title: 'x'.repeat(200), description: 'x'.repeat(4096), hours: '', note: 'x'.repeat(512), languages: ['en', 'es', 'fr', 'de', 'pt', 'ja', 'ko', 'ru'] })).toBeNull()
   })
 
   it('sends exactly the create body: no tool, areas in list order, none as "0", the payout wallet', () => {
@@ -199,7 +222,15 @@ describe('writing a profile', () => {
       price: '0',
       recipient: 'wal_acme',
       public: true,
-      expert: { rate: '150', areas: ['base', 'cloud'], languages: ['en', 'es'], timezone: 'America/Los_Angeles', availability: 'Weekdays 9-17 PT' },
+      expert: {
+        rate: '150',
+        areas: ['base', 'cloud'],
+        languages: ['en', 'es'],
+        timezone: 'America/Los_Angeles',
+        availability: 'Part-time · Weekdays 9-17 PT',
+        skills: ['TypeScript', 'Go'],
+        links: ['https://github.com/ada'],
+      },
     })
     expect(create(form)).not.toHaveProperty('tool')
     expect(create({ ...form, rate: '', price: '500' })).toMatchObject({ price: '500', expert: { rate: '0' } })
@@ -211,8 +242,7 @@ describe('writing a profile', () => {
     expect(change(form)).toEqual(rest)
   })
 
-  it('fills a blank form in the reader’s zone, and a person’s own listing as it stands', () => {
-    expect(fill(null, 'Europe/Paris')).toEqual({ title: '', description: '', rate: '', price: '', areas: [], languages: [], timezone: 'Europe/Paris', availability: '', recipient: '' })
+  it('fills a person’s own listing as it stands, the chip and the note apart', () => {
     const own: Listing = {
       id: 'lst_1',
       publisherOrg: 'acme',
@@ -226,22 +256,91 @@ describe('writing a profile', () => {
       currency: 'USD',
       recipient: 'wal_acme',
       public: true,
-      expert: { ...expert, self: true },
+      expert: { ...expert, availability: 'Weekends · after 6', skills: ['Go'], links: ['https://ada.dev'], self: true },
       createdAt: 1,
       updatedAt: 1,
     }
-    expect(fill(own, 'Europe/Paris')).toEqual({
+    expect(fill(own)).toEqual({
       title: 'Ada',
       description: 'About',
       rate: '150',
       price: '',
+      fee: 'rate',
       areas: ['base', 'cloud'],
       languages: ['en', 'es'],
+      skills: ['Go'],
+      links: ['https://ada.dev'],
       timezone: 'America/Los_Angeles',
-      availability: 'Weekdays 9-17 PT',
+      hours: 'weekends',
+      note: 'after 6',
       recipient: 'wal_acme',
     })
-    expect(fill({ ...own, price: '500' }, 'UTC').price).toBe('500')
+    expect(fill({ ...own, price: '500', expert: { ...own.expert!, rate: '0' } })).toMatchObject({ rate: '', price: '500', fee: 'price' })
+    expect(fill({ ...own, price: '500' })).toMatchObject({ rate: '150', price: '500', fee: 'rate' })
+    expect(fill({ ...own, expert: { ...own.expert!, skills: undefined, links: undefined } })).toMatchObject({ skills: [], links: [] })
+  })
+
+  it('states availability as the chip and the note, and reads it back', () => {
+    expect(availability('part-time', ' Weekdays ')).toBe('Part-time · Weekdays')
+    expect(availability('full-time', '')).toBe('Full-time')
+    expect(availability('', 'Mornings')).toBe('Mornings')
+    expect(availability('', ' ')).toBe('')
+    expect(hoursOf('Weekends · after 6')).toEqual({ hours: 'weekends', note: 'after 6' })
+    expect(hoursOf('part-time')).toEqual({ hours: 'part-time', note: '' })
+    expect(hoursOf('Weekdays 9-17 PT')).toEqual({ hours: '', note: 'Weekdays 9-17 PT' })
+    expect(hoursOf('Part-timer')).toEqual({ hours: '', note: 'Part-timer' })
+  })
+
+  it('takes a link that is https with a host, no login, and short', () => {
+    expect(link('https://github.com/ada')).toBe(true)
+    expect(link('http://github.com/ada')).toBe(false)
+    expect(link('https://ada:pw@github.com')).toBe(false)
+    expect(link('github.com/ada')).toBe(false)
+    expect(link(`https://example.com/${'x'.repeat(200)}`)).toBe(false)
+  })
+
+  it('starts a short card from what is known, and the same card empty from nothing', () => {
+    const blank = start({ timezone: 'Europe/Paris', languages: [] })
+    expect(blank).toEqual({
+      title: '',
+      description: '',
+      rate: '',
+      price: '',
+      fee: 'rate',
+      areas: [],
+      languages: ['en'],
+      skills: [],
+      links: [],
+      timezone: 'Europe/Paris',
+      hours: '',
+      note: '',
+      recipient: '',
+    })
+    const known = start({
+      timezone: 'Europe/Paris',
+      languages: ['es', 'en'],
+      imported: { name: 'Ada', bio: 'Builds', skills: ['Go'], areas: ['cloud', 'base'], links: ['https://github.com/ada'], timezone: 'America/New_York' },
+    })
+    expect(known).toMatchObject({ title: 'Ada', description: 'Builds', areas: ['base', 'cloud'], languages: ['es', 'en'], skills: ['Go'], links: ['https://github.com/ada'], timezone: 'America/New_York' })
+    expect(start({ timezone: 'Europe/Paris', languages: [], imported: { name: '', bio: '', skills: [], areas: [], links: [], timezone: '' } }).timezone).toBe('Europe/Paris')
+  })
+
+  it('shows what a fresh read would change, and never empties what the person wrote', () => {
+    const held = { ...form, hours: 'part-time' as const, skills: ['Go'], links: ['https://github.com/ada'], areas: ['base'] }
+    const same = { name: 'Ada Lovelace ', bio: '', skills: [], areas: ['base'], links: [], timezone: '' }
+    expect(refresh(held, { ...same, name: ' Ada Lovelace ' }).changes).toEqual([])
+    const out = refresh(held, { name: 'Ada L.', bio: 'New bio', skills: ['Rust', 'Go'], areas: ['cloud'], links: ['https://ada.dev'], timezone: 'Europe/Paris' })
+    expect(out.changes.map((c) => c.field)).toEqual(['title', 'description', 'skills', 'links', 'areas'])
+    expect(out.changes.find((c) => c.field === 'areas')).toMatchObject({ before: 'Build with Base', after: 'Build with Base, Cloud' })
+    expect(out.next).toMatchObject({ title: 'Ada L.', description: 'New bio', skills: ['Rust', 'Go'], links: ['https://ada.dev'], areas: ['base', 'cloud'], timezone: 'America/Los_Angeles' })
+  })
+
+  it('lists the products an expert is scored in', () => {
+    expect(PRODUCTS.map((p) => p.slug)).toEqual(['dev', 'bot', 'team', 'base', 'commerce', 'cloud', 'agents', 'kai', 'enso', 'zen', 'creative'])
+    expect(productLabel('creative')).toBe('Creative AI')
+    expect(productLabel('unheard-of')).toBe('unheard-of')
+    expect(isProduct('kai')).toBe(true)
+    expect(isProduct('web3')).toBe(false)
   })
 
   it('finds the listing the platform marks as the caller’s own, never a colleague’s', () => {
@@ -251,5 +350,43 @@ describe('writing a profile', () => {
     expect(mine([own('lst_0'), own('lst_2', true, 'agent')])).toBeNull()
     expect(mine([{ id: 'lst_4', kind: 'expert' } as Listing])).toBeNull()
     expect(mine([])).toBeNull()
+  })
+})
+
+describe('the directory in the address', () => {
+  it('reads what the address asks and drops what this list does not know', () => {
+    const p = new URLSearchParams('q=ada&area=base&sort=level&dir=asc&language=es&verified=true&minLevel=2&badge=zen-pioneer&tokenTier=1b&rateMin=50&rateMax=200.5&product=kai')
+    expect(shelf(p)).toEqual({ q: 'ada', area: 'base', sort: '', dir: 'asc', language: 'es', verified: true, minLevel: 2, badge: 'zen-pioneer', tokenTier: '1b', rateMin: '50', rateMax: '200.5', product: 'kai' })
+    const junk = new URLSearchParams('area=web3&sort=luck&dir=sideways&language=xx&verified=yes&minLevel=9&badge=x&tokenTier=2m&rateMin=lots&rateMax=-1&product=web3')
+    expect(shelf(junk)).toEqual({ q: '', area: '', sort: '', dir: 'desc', language: '', verified: false, minLevel: 0, badge: '', tokenTier: '', rateMin: '', rateMax: '', product: '' })
+    // A product is the order: an address that names a sort too is read as the product.
+    expect(shelf(new URLSearchParams('sort=level&product=base'))).toMatchObject({ sort: '', product: 'base' })
+    expect(shelf(new URLSearchParams())).toEqual({ q: '', area: '', sort: '', dir: 'desc', language: '', verified: false, minLevel: 0, badge: '', tokenTier: '', rateMin: '', rateMax: '', product: '' })
+  })
+
+  it('asks the shop only for what narrows or orders, and the direction only of an order', () => {
+    expect(asked(shelf(new URLSearchParams()), 200, 0)).toMatchObject({ kind: 'expert', q: '', sort: '', dir: undefined, verified: false, minLevel: undefined, limit: 200, offset: 0 })
+    expect(asked(shelf(new URLSearchParams('sort=tokens&dir=asc&minLevel=3&verified=true&tokenTier=1m')), 200, 200)).toMatchObject({ sort: 'tokens', dir: 'asc', minLevel: 3, verified: true, tokenTier: '1m', offset: 200 })
+    expect(asked(shelf(new URLSearchParams('product=base')), 200, 0)).toMatchObject({ product: 'base', dir: 'desc' })
+  })
+
+  it('sets one thing in the address and clears it when it is empty, so a view can be passed along', () => {
+    const p = new URLSearchParams('area=base')
+    expect(keep(p, 'sort', 'level').toString()).toBe('area=base&sort=level')
+    expect(keep(p, 'area', '').toString()).toBe('')
+    expect(keep(p, 'verified', true).toString()).toBe('area=base&verified=true')
+    expect(keep(new URLSearchParams('verified=true'), 'verified', false).toString()).toBe('')
+    expect(keep(new URLSearchParams('minLevel=2'), 'minLevel', 0).toString()).toBe('')
+    expect(keep(new URLSearchParams('dir=asc'), 'dir', 'desc').toString()).toBe('')
+    expect(keep(new URLSearchParams(), 'dir', 'asc').toString()).toBe('dir=asc')
+    expect(keep(new URLSearchParams('sort=level&area=base'), 'product', 'kai').toString()).toBe('area=base&product=kai')
+    expect(keep(new URLSearchParams('product=kai'), 'sort', 'rate').toString()).toBe('sort=rate')
+    expect(keep(new URLSearchParams('sort=rate'), 'product', '').toString()).toBe('sort=rate')
+    expect(p.toString()).toBe('area=base')
+  })
+
+  it('offers every order the platform has, and the token tiers lowest first', () => {
+    expect(SORTS.map((o) => o.slug)).toEqual(['newest', 'tokens', 'level', 'points', 'rating', 'jobs', 'rate'])
+    expect(TIERS.map((t) => t.label)).toEqual(['100K+', '1M+', '5M+', '10M+', '100M+', '1B+', '10B+', '100B+', '1T+'])
   })
 })

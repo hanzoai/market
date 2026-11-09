@@ -38,11 +38,49 @@ export interface ExpertProfile {
   /** An IANA time zone id. */
   timezone: string
   availability: string
+  /** What they know, as they name it. */
+  skills?: string[]
+  /** Https addresses: their profile, their site, what they shipped. */
+  links?: string[]
+}
+
+/** One badge a member holds, as anyone may see it; `rarity` is the program's word. */
+export interface Badge {
+  id: string
+  name: string
+  pillar: string
+  rarity: string
+}
+
+/** A member's public standing in the rewards program: only for one who turned it on, and only what that profile shows. */
+export interface Standing {
+  level: number
+  levelName: string
+  points: number
+  /** The highest token milestone held, never a count; absent when none is. */
+  tier?: { id: string; label: string }
+  /** The rarest three. */
+  badges: Badge[]
+  /** Awarded claims by pillar: use, share, community, contribute, expert. */
+  pillars: Record<string, number>
+}
+
+/** How much a person has used and built with one product, and what the score is made of. Only recorded data is counted. */
+export interface Mastery {
+  product: string
+  score: number
+  parts: Partial<Record<'usage' | 'badges' | 'contributions' | 'jobs', number>>
 }
 
 /** An expert as the shop shows them; `verified` is the platform staff's word, never the expert's. */
 export interface Expert extends ExpertProfile {
   verified: boolean
+  /** Present only when the expert's rewards profile is public. */
+  reward?: Standing
+  /** Their strongest products, by score. */
+  products?: Mastery[]
+  /** The products they rank in the top three for. */
+  top?: string[]
 }
 
 /** One of the caller org's own listings. */
@@ -130,9 +168,27 @@ export interface ExpertReq {
 
 export type ListingPatch = Partial<Omit<PublishReq, 'tool' | 'kind'>> & { expert?: ExpertProfile }
 
-/** GET /v1/marketplace/shop — every public listing, any org, no sign-in. 48 a page by default, 200 at most. `area` narrows experts. */
-export const shop = (q: { q?: string; kind?: Kind | ''; area?: string; limit?: number; offset?: number }) =>
-  request<Shop>({ path: '/v1/marketplace/shop', query: q, anonymous: true })
+/** What the shop may be asked; everything after `offset` narrows or orders experts only. */
+export interface ShopQuery {
+  q?: string
+  kind?: Kind | ''
+  area?: string
+  limit?: number
+  offset?: number
+  sort?: string
+  dir?: 'asc' | 'desc'
+  language?: string
+  verified?: boolean
+  minLevel?: number
+  badge?: string
+  tokenTier?: string
+  rateMin?: string
+  rateMax?: string
+  product?: string
+}
+
+/** GET /v1/marketplace/shop — every public listing, any org, no sign-in. 48 a page by default, 200 at most. */
+export const shop = (q: ShopQuery) => request<Shop>({ path: '/v1/marketplace/shop', query: { ...q, verified: q.verified || undefined }, anonymous: true })
 
 /** GET /v1/marketplace/shop/{id}. */
 export const shopListing = (id: string) =>

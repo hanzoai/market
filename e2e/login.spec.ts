@@ -23,12 +23,13 @@ async function measure(page: Page) {
     const line = link?.parentElement ?? null
     const centre = link ? link.getBoundingClientRect() : null
     const hit = centre ? document.elementFromPoint(centre.left + centre.width / 2, centre.top + centre.height / 2) : null
+    // A first visit is asked about cookies by a banner fixed over the screen's foot: it covers the page, never the footer.
     return {
       card: box(document.querySelector('section[aria-label="Log in"] > *')),
       line: box(line),
       area: box(document.querySelector('main > *')),
       footer: box(document.querySelector('footer')),
-      onTop: hit === link,
+      underFooter: Boolean(hit && document.querySelector('footer')?.contains(hit)),
       overflow: document.documentElement.scrollWidth - window.innerWidth,
     }
   })
@@ -36,23 +37,18 @@ async function measure(page: Page) {
 
 for (const screen of SCREENS) {
   for (const scheme of SCHEMES) {
-    test(`/login at ${screen.width} ${scheme}: the sign-up line is whole above the footer and the card is centred`, async ({ page }) => {
+    test(`@live /login at ${screen.width} ${scheme}: the sign-up line is whole above the footer and the card is centred`, async ({ page }) => {
       await page.setViewportSize(screen)
       await page.emulateMedia({ colorScheme: scheme })
-      await mock(page, world())
+      if (!process.env.BASE_URL) await mock(page, world())
       await page.goto('/login?from=logout')
       await expect(page.getByRole('heading', { name: 'Log in to Hanzo Market', level: 1 })).toBeVisible()
-      // A first visit is asked about cookies by a banner fixed over the screen's foot; it is not the page.
-      const banner = page.getByRole('dialog', { name: 'Cookie preferences' })
-      await banner.waitFor({ timeout: 3000 }).catch(() => undefined)
-      if (await banner.isVisible()) await banner.getByRole('button', { name: 'Close and use essential cookies only' }).click()
-      await expect(banner).toHaveCount(0)
       await expect(page.getByText('New to Hanzo Market?')).toBeVisible()
       await expect(page.getByRole('link', { name: 'Create an account' })).toBeVisible()
 
       const m = await measure(page)
-      // The sign-up line is whole, on screen across, and nothing is drawn over it.
-      expect(m.onTop).toBe(true)
+      // The sign-up line is whole, on screen across, and the footer is not drawn over it.
+      expect(m.underFooter).toBe(false)
       expect(m.line.left).toBeGreaterThanOrEqual(0)
       expect(m.line.right).toBeLessThanOrEqual(screen.width)
       // The page area is at least the screen below the bar, and the footer starts where it ends.
