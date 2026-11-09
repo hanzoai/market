@@ -5,6 +5,7 @@
 import { HanzoFooter, HanzoHeader, type HanzoLink, type HanzoNav, type HanzoSurface } from '@hanzogui/shell'
 import { useLocation } from 'react-router'
 
+import { Menu } from '~/menu'
 import { useSession } from '~/session'
 
 /** The shell's bar is 60 tall (@hanzogui/shell HEADER_H); a page that fills the screen below it says so with this. */
@@ -49,18 +50,9 @@ export const SURFACE: HanzoSurface = {
 export function Header() {
   const session = useSession()
   const where = useLocation()
-  const auth = session.loading
-    ? undefined
-    : {
-        user: session.signedIn ? { name: session.name || 'Signed in', email: session.email ?? undefined } : null,
-        onSignIn: session.signIn,
-        onSignOut: session.signOut,
-        items: [
-          { id: 'my-jobs', label: 'Your jobs', href: '/jobs' },
-          { id: 'my-listings', label: 'Your listings', href: '/sell/listings' },
-        ],
-      }
-  return <HanzoHeader surface={SURFACE} auth={auth} currentHref={where.pathname + where.search} primaryLast />
+  // Signed out, the bar's one action; signed in, the person's menu, which carries the accounts.
+  const auth = session.loading || session.signedIn ? undefined : { user: null, onSignIn: session.signIn }
+  return <HanzoHeader surface={SURFACE} auth={auth} identitySlot={session.signedIn ? <Menu /> : undefined} currentHref={where.pathname + where.search} primaryLast />
 }
 
 export function Footer() {

@@ -5,6 +5,7 @@ import '@hanzo/font/css'
 import '@hanzo/ui/theme.css'
 // The rules gui components assume (the min-width floor every grid child needs).
 import '@hanzo/ui/styles/motion.css'
+import { configure } from '@hanzo/app/where'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
@@ -15,6 +16,10 @@ import '~/webmcp'
 // The ambient gui telemetry client, off: our one stream is src/analytics.tsx,
 // and this one would send every page view a second time with no ingest key.
 ;(globalThis as Record<string, unknown>)['__HANZO_TELEMETRY__'] = { enabled: false }
+
+// This site signs people in on its own page and keeps IAM's session cookie here, so the
+// account list, the credential calls and sign-out are answered on this origin.
+configure({ answers: (host) => host === 'hanzo.market' })
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
