@@ -213,3 +213,33 @@ for (const width of [375, 768, 1440]) {
     expect(bad).toBe(0)
   })
 }
+
+test('@live the directory asks the platform for its order and filters, keeps them in the address, and the platform answers', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  const answered = page.waitForResponse((r) => new URL(r.url()).pathname === '/v1/marketplace/shop' && new URL(r.url()).searchParams.get('sort') === 'level')
+  await page.goto('/experts?sort=level&dir=asc&verified=true&minLevel=2&tokenTier=1b&language=es&rateMin=10&rateMax=900&area=base')
+  const res = await answered
+  expect(res.status()).toBe(200)
+  expect(Object.fromEntries(new URL(res.url()).searchParams)).toMatchObject({ kind: 'expert', sort: 'level', dir: 'asc', verified: 'true', minLevel: '2', tokenTier: '1b', language: 'es', rateMin: '10', rateMax: '900', area: 'base' })
+  expect(((await res.json()) as { listings: unknown[]; total: number }).total).toBeGreaterThanOrEqual(0)
+  await expect(page.getByRole('combobox', { name: 'Sort' })).toHaveValue('level')
+  await expect(page.getByRole('combobox', { name: 'Token tier' })).toHaveValue('1b')
+  await expect(page.getByRole('button', { name: 'Verified' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('combobox', { name: 'Sort' }).selectOption('rate')
+  await expect(page).toHaveURL(/sort=rate/)
+  await expect(page.getByRole('group', { name: 'Product' }).getByRole('button')).toHaveCount(12)
+  expect(errors).toEqual([])
+})
+
+test('@live a product ranks by itself: the platform refuses a sort beside it, and the page never sends both', async ({ page }) => {
+  const asked: URL[] = []
+  page.on('request', (r) => {
+    const u = new URL(r.url())
+    if (u.pathname === '/v1/marketplace/shop') asked.push(u)
+  })
+  await page.goto('/experts?sort=level&product=base')
+  await expect(page.getByRole('combobox', { name: 'Sort' })).toHaveValue('')
+  await expect.poll(() => asked.length).toBeGreaterThan(0)
+  expect(asked.every((u) => u.searchParams.get('product') === 'base' && u.searchParams.get('sort') === null)).toBe(true)
+})
