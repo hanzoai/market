@@ -48,6 +48,17 @@ export function useClient(): IAM {
   return useMemo(() => new IAM({ ...config, proxyBaseUrl: window.location.origin }), [config])
 }
 
+/** Write the page down, so a sign-in that follows (the first, or another account's) comes back to it. */
+export function remember(): void {
+  const here = window.location.pathname
+  if (here === LOGIN || here === SIGNUP) return
+  try {
+    window.sessionStorage.setItem(RETURN, here + window.location.search)
+  } catch {
+    /* the sign-in still lands on the home page */
+  }
+}
+
 /** Where to land once signed in: the page the sign-in started from. */
 export function destination(): string {
   try {
@@ -106,14 +117,7 @@ function Bind({ children }: { children: ReactNode }) {
         if (work(pick)) setPicked(pick)
       },
       signIn: () => {
-        const here = window.location.pathname
-        if (here !== LOGIN && here !== SIGNUP) {
-          try {
-            window.sessionStorage.setItem(RETURN, here + window.location.search)
-          } catch {
-            /* the sign-in still lands on the home page */
-          }
-        }
+        remember()
         void go(LOGIN)
       },
       signOut: () => void client.end().then(out),

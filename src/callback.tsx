@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router'
 
 import { track } from '~/analytics'
 import { back, returned } from '~/lib/linked'
-import { takeMethod } from '~/login'
+import { takeMethod } from '~/pick'
 import { destination } from '~/session'
 
 /**
