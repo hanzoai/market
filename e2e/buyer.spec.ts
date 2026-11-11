@@ -59,7 +59,7 @@ test('browse → listing → sign in → clearance → the buyer wallet signs an
   await expect(page.locator('[data-code]').nth(1)).toContainText('"op":"post_marketplace_jobs"')
   await expect(page.getByRole('main').getByRole('link', { name: 'Documentation' })).toHaveAttribute('href', 'https://docs.hanzo.ai/docs/agents/deep-research')
 
-  // Checkout asks who you are, through hanzo.id.
+  // Checkout asks who you are, through hanzo.ai’s sign-in.
   await page.getByRole('button', { name: 'Hire' }).click()
   await expect(page.getByRole('heading', { name: 'Sign in to continue' })).toBeVisible()
   await signIn(page, '/checkout/lst_research')

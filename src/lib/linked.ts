@@ -3,7 +3,7 @@
 // here authenticates or keeps a token; IAM links a provider to the account that is
 // signed in, runs the provider's consent, and brings the browser back.
 
-import { api, CLIENT_ID } from '~/lib/api'
+import { api, CLIENT_ID, local, SIGNIN } from '~/lib/api'
 import { Refusal, Silence, why } from '~/lib/http'
 import { bearer } from '~/lib/token'
 
@@ -61,17 +61,38 @@ export function back(): string {
 }
 
 /**
+ * Where a connect starts: hanzo.ai, the origin the person signed in on.
+ *
+ * IAM answers the start with an address on the sign-in origin the request reached,
+ * and opening it needs the person's session THERE (federation_link.go `follow`,
+ * `signedInHere`). The market keeps no session of its own since it signs in on
+ * hanzo.ai (D5), so a start on this origin would open on the issuer, hanzo.id,
+ * where the person holds none, and stop at "sign in here as the account you are
+ * connecting". Started on hanzo.ai, it opens where the session lives. The call
+ * carries the market's own bearer, which IAM accepts from the platform's own
+ * applications, and hanzo.ai admits hanzo.market's requests (CORS). A local page
+ * asks its own origin, as every other call here does.
+ */
+export function linkOrigin(): string {
+  return local(window.location.hostname) ? window.location.origin : SIGNIN
+}
+
+/**
  * Start connecting `provider` to this account: IAM answers an address, and the
  * browser goes there; IAM sends it on to the provider and then to `/auth/callback`
  * with `linked=<provider>` (or the reason it refused). A call IAM does not answer
- * on this origin is said as it is.
+ * is said as it is.
  */
 export async function connect(provider: string, path: string): Promise<void> {
   let res: Response
+  const at = linkOrigin()
   try {
-    res = await fetch(new URL('/v1/iam/link', window.location.origin), {
+    res = await fetch(new URL('/v1/iam/link', at), {
       method: 'POST',
-      credentials: 'include',
+      // The bearer names the person. hanzo.ai admits this origin without
+      // credentials (no Access-Control-Allow-Credentials), so cookies ride only
+      // on a same-origin (local) call.
+      credentials: at === window.location.origin ? 'include' : 'omit',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(bearer() ? { Authorization: `Bearer ${bearer()}` } : {}) },
       body: JSON.stringify({ provider, clientId: CLIENT_ID, returnUri: `${window.location.origin}/auth/callback` }),
     })

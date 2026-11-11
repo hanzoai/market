@@ -1,229 +1,151 @@
-import { expect, test, type Page, type Route } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
-import { signIn } from './flow'
-import { mock, world } from './mock'
+import { departures, market, MARKET, signIn } from './flow'
+import { END_SESSION, HANZO_AI, mock, token, world } from './mock'
 
-// The accounts signed in on this browser: the chooser on /login and the account
-// menu in the bar, both @hanzo/app's, on this site's own origin. IAM's account list,
-// credential and sign-out calls are answered at the network layer.
+// The signed-in person's menu in the bar, and the ways to be someone else or no
+// one. The accounts signed in on this browser are hanzo.ai's to list and choose
+// among: this site asks its own origin for no account list and draws no chooser,
+// and Switch account and Add account leave for hanzo.ai's chooser with this
+// site's own request. Signing out hands the tokens back here and ends the
+// session through hanzo.id, back to the home page.
 
-const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET,POST,PUT,OPTIONS' }
-const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: cors, body: JSON.stringify(body) })
+const b64url = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url')
 
-const ada = { sub: 'acme/ada', owner: 'acme', name: 'ada', displayName: 'Ada Lovelace', email: 'ada@acme.test', avatar: '' }
-const grace = { sub: 'acme/grace', owner: 'acme', name: 'grace', displayName: 'Grace Hopper', email: 'grace@acme.test', avatar: '' }
+/** A token for `sub`, as hanzo.id mints one for this site. */
+const jwt = (sub: string) =>
+  `${b64url({ alg: 'RS256', typ: 'JWT' })}.${b64url({ sub, iss: 'https://hanzo.id', aud: 'hanzo-market', orgs: [{ org: 'acme', role: 'admin' }], exp: Math.floor(Date.now() / 1000) + 3600 })}.sig`
 
-interface Held {
-  accounts: Record<string, string>[]
-  /** The account each credential call named (`loginHint` in its body), or empty. */
-  logins: string[]
-  puts: unknown[]
-  logouts: string[]
-}
-
-/** IAM's account list for this browser, and a credential call that spends a session only for the account it is told to (it asks the person to choose otherwise). */
-async function iam(page: Page, accounts: Record<string, string>[], silent = false): Promise<Held> {
-  const held: Held = { accounts: [...accounts], logins: [], puts: [], logouts: [] }
-  await page.route(/\/v1\/iam\/accounts$/, (route) => {
-    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
-    if (route.request().method() === 'PUT') {
-      held.puts.push(route.request().postDataJSON())
-      return json(route, { status: 'ok' })
-    }
-    return json(route, { status: 'ok', data: held.accounts })
+/** The subject of the access token this site holds, or null. */
+const holder = (page: Page) =>
+  page.evaluate(() => {
+    const t = localStorage.getItem('hanzo_iam_access_token')
+    return t ? (JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) as { sub: string }).sub : null
   })
-  if (!silent) {
-    await page.route(/\/v1\/iam\/login(\?|$)/, (route, req) => {
-      if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
-      const named = (req.postDataJSON() as { loginHint?: string } | null)?.loginHint ?? ''
-      held.logins.push(named)
-      return named ? json(route, { status: 'ok', data: 'test-code' }) : json(route, { status: 'error', msg: 'choose an account' }, 400)
-    })
-  }
-  await page.route(/\/v1\/iam\/oauth\/logout/, (route, req) => {
-    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
-    const hint = new URLSearchParams(req.postData() ?? '').get('logout_hint')
-    if (hint) {
-      held.logouts.push(hint)
-      held.accounts = held.accounts.filter((a) => a.sub !== hint)
-    }
-    return json(route, { status: 'ok' })
-  })
-  return held
-}
 
-const rows = (page: Page) => page.getByRole('region', { name: 'Accounts' })
-
-test('/login with several accounts signed in asks which one, and signing in as one is on this site, as that account', async ({ page }) => {
+/** Signed in on this site, the way a real sign-in ends, and on to `path`. */
+async function member(page: Page, path: string) {
+  await page.setViewportSize({ width: 1440, height: 900 })
   await mock(page, world())
-  const held = await iam(page, [ada, grace])
-  const issuer: string[] = []
+  await page.goto('/experts/join')
+  await signIn(page, '/experts/join')
+  await page.goto(path)
+}
+
+/** The bar's menu, open. */
+async function menu(page: Page) {
+  await page.getByRole('button', { name: /^Account:/ }).click()
+  return page.getByRole('menu')
+}
+
+test('signed in, the bar’s menu is their things, Switch account, Add account and Log out, and no account list is asked of this origin', async ({ page }) => {
+  const asked: string[] = []
   page.on('request', (r) => {
-    if (r.isNavigationRequest() && new URL(r.url()).hostname === 'hanzo.id') issuer.push(r.url())
+    const p = new URL(r.url()).pathname
+    if (p === '/v1/iam/accounts' || p === '/v1/iam/login') asked.push(p)
   })
-  await page.goto('/login')
-  await expect(rows(page)).toBeVisible()
-  await expect(rows(page).getByRole('button', { name: 'Continue as ada@acme.test' })).toBeVisible()
-  await expect(rows(page).getByRole('button', { name: 'Continue as grace@acme.test' })).toBeVisible()
-  await expect(rows(page)).toContainText('Ada Lovelace')
-  await expect(rows(page)).toContainText('grace@acme.test · acme')
-  await expect(rows(page).getByRole('button', { name: 'Use another account' })).toBeVisible()
-  await expect(rows(page).getByRole('button', { name: 'Sign out of all accounts' })).toBeVisible()
-  // The chooser stands where the form would, and the form is not drawn under it.
-  await expect(page.getByRole('heading', { name: 'Log in to Hanzo Market' })).toHaveCount(0)
-
-  await rows(page).getByRole('button', { name: 'Continue as grace@acme.test' }).click()
-  await page.waitForURL((u) => u.pathname === '/')
-  // IAM was asked, on this origin, for the account that was pressed.
-  expect(held.logins).toContain('acme/grace')
-  expect(issuer).toEqual([])
+  await member(page, '/experts')
+  const m = await menu(page)
+  for (const name of ['Your jobs', 'Your listings', 'Switch account', 'Add account', 'Log out']) await expect(m.getByRole('menuitem', { name })).toBeVisible()
+  // hanzo.ai's chooser holds the other accounts: none are rows here, and there is one way out.
+  await expect(m.getByRole('menuitem', { name: 'Sign out of all accounts' })).toHaveCount(0)
+  expect(asked).toEqual([])
 })
 
-test('one account alone is the form, not a chooser; one just signed out of is the chooser', async ({ page }) => {
-  await mock(page, world())
-  await iam(page, [ada])
-  await page.goto('/login?from=logout')
-  await expect(rows(page)).toBeVisible()
-  await expect(rows(page).getByRole('button', { name: 'Sign out of all accounts' })).toHaveCount(0)
-  await page.getByRole('button', { name: 'Use another account' }).click()
-  await expect(page.getByRole('heading', { name: 'Log in to Hanzo Market' })).toBeVisible()
-  await expect(rows(page)).toHaveCount(0)
-
-  const fresh = await page.context().newPage()
-  await mock(fresh, world())
-  await iam(fresh, [ada])
-  await fresh.goto('/login')
-  await expect(fresh.getByRole('heading', { name: 'Log in to Hanzo Market' })).toBeVisible()
-  await expect(fresh.getByRole('region', { name: 'Accounts' })).toHaveCount(0)
-  await fresh.close()
-})
-
-test('nobody listed, or IAM not answering, is the sign-in form as it always was', async ({ page }) => {
-  await mock(page, world())
-  await iam(page, [])
-  await page.goto('/login?from=logout')
-  await expect(page.getByRole('heading', { name: 'Log in to Hanzo Market' })).toBeVisible()
-  await expect(rows(page)).toHaveCount(0)
-  const down = await page.context().newPage()
-  await mock(down, world())
-  await down.route(/\/v1\/iam\/accounts$/, (route) => route.fulfill({ status: 503, contentType: 'text/plain', headers: cors, body: 'down' }))
-  await down.goto('/login?from=logout')
-  await expect(down.getByRole('heading', { name: 'Log in to Hanzo Market' })).toBeVisible()
-  await down.close()
-})
-
-test('Sign out on a row ends that account alone, here, and the rest remain', async ({ page }) => {
-  await mock(page, world())
-  const held = await iam(page, [ada, grace])
-  await page.goto('/login')
-  await rows(page).getByRole('button', { name: 'Sign out Grace Hopper' }).click()
-  await expect(rows(page).getByRole('button', { name: 'Continue as grace@acme.test' })).toHaveCount(0)
-  await expect(rows(page).getByRole('button', { name: 'Continue as ada@acme.test' })).toBeVisible()
-  expect(held.logouts).toEqual(['acme/grace'])
-  // One account is left, so there is no all-accounts way out.
-  await expect(rows(page).getByRole('button', { name: 'Sign out of all accounts' })).toHaveCount(0)
-})
-
-test('Sign out of all accounts ends every session and lands on the sign-in', async ({ page }) => {
-  await mock(page, world())
-  const held = await iam(page, [ada, grace])
-  await page.goto('/login')
-  const ended = page.waitForRequest((r) => new URL(r.url()).pathname === '/v1/iam/oauth/logout' && r.method() === 'POST')
-  await rows(page).getByRole('button', { name: 'Sign out of all accounts' }).click()
-  const req = await ended
-  expect(new URLSearchParams(req.postData() ?? '').get('logout_hint')).toBeNull()
-  await page.waitForURL((u) => u.pathname === '/login')
-  expect(held.logouts).toEqual([])
-})
-
-// ── the bar's menu ───────────────────────────────────────────────────────────
-
-test('signed in with several accounts, the bar’s menu lists the others, Add account and the ways out; choosing one comes back to this page as them', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
-  await mock(page, world())
-  await page.goto('/experts/join')
-  await signIn(page, '/experts/join')
-  const held = await iam(page, [ada, grace], true)
-  await page.route(/\/v1\/iam\/login(\?|$)/, (route, req) => {
-    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors })
-    held.logins.push((req.postDataJSON() as { loginHint?: string } | null)?.loginHint ?? '')
-    return json(route, { status: 'ok', data: 'test-code' })
+test('Switch account leaves for hanzo.ai’s chooser with this site’s own request, and the account chosen there comes back to this page as them', async ({ page }) => {
+  await member(page, '/experts')
+  // hanzo.ai's chooser, where Grace is pressed: her code comes back to this site's callback.
+  const asked: URL[] = []
+  await page.route(HANZO_AI, (route) => {
+    const u = new URL(route.request().url())
+    asked.push(u)
+    const back = new URL(u.searchParams.get('redirect_uri') ?? '')
+    back.searchParams.set('code', 'grace-code')
+    back.searchParams.set('state', u.searchParams.get('state') ?? '')
+    return route.fulfill({ status: 302, headers: { location: back.toString() } })
   })
-  await page.goto('/experts')
-  await page.getByRole('button', { name: /^Account:/ }).click()
-  const menu = page.getByRole('menu')
-  await expect(menu.getByRole('menuitem', { name: /Grace Hopper/ })).toBeVisible()
-  await expect(menu.getByRole('menuitem', { name: /Ada Lovelace/ })).toHaveCount(1) // the bar's own row is the label, not a switch
-  await expect(menu.getByRole('menuitem', { name: 'Add account' })).toBeVisible()
-  await expect(menu.getByRole('menuitem', { name: /^Sign out Ada/ })).toBeVisible()
-  await expect(menu.getByRole('menuitem', { name: 'Sign out of all accounts' })).toBeVisible()
-  await expect(menu.getByRole('menuitem', { name: 'Your jobs' })).toBeVisible()
-  await expect(menu.getByRole('menuitem', { name: 'Your listings' })).toBeVisible()
+  await page.route(/hanzo\.id\/v1\/iam\/oauth\/token/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({ access_token: jwt('acme/grace'), refresh_token: 'r', id_token: jwt('acme/grace'), token_type: 'Bearer', expires_in: 3600 }),
+    }),
+  )
+  expect(await holder(page)).toBe('acme/ada')
+  const exchanged = page.waitForRequest((r) => new URL(r.url()).pathname === '/v1/iam/oauth/token' && (r.postData() ?? '').includes('grace-code'))
+  await (await menu(page)).getByRole('menuitem', { name: 'Switch account' }).click()
+  await exchanged
 
-  await menu.getByRole('menuitem', { name: /Grace Hopper/ }).click()
+  const to = asked[0]
+  expect(to.origin + to.pathname).toBe('https://hanzo.ai/login')
+  expect(to.searchParams.get('prompt')).toBe('select_account')
+  expect(to.searchParams.get('client_id')).toBe('hanzo-market')
+  expect(to.searchParams.get('redirect_uri')).toBe(`${new URL(page.url()).origin}/auth/callback`)
+  expect(to.searchParams.get('code_challenge_method')).toBe('S256')
   await page.waitForURL((u) => u.pathname === '/experts')
-  expect(held.logins).toContain('acme/grace')
+  await expect.poll(() => holder(page)).toBe('acme/grace')
 })
 
-test('Add account goes to this site’s own form and comes back to the page', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
-  await mock(page, world())
-  await page.goto('/experts/join')
-  await signIn(page, '/experts/join')
-  await iam(page, [ada, grace], true)
-  await page.goto('/experts')
-  await page.getByRole('button', { name: /^Account:/ }).click()
-  await page.getByRole('menuitem', { name: 'Add account' }).click()
-  await expect(page).toHaveURL(/\/login\?from=add$/)
-  // The form, asked for: IAM is not asked to sign the same person straight back in.
-  await expect(page.getByRole('heading', { name: 'Log in to Hanzo Market' })).toBeVisible()
+test('Add account leaves for hanzo.ai’s chooser with this site’s own request, keeps the session held here, and comes back to the page', async ({ page }) => {
+  await member(page, '/experts')
+  const left = await departures(page)
+  await (await menu(page)).getByRole('menuitem', { name: 'Add account' }).click()
+  await expect.poll(() => left.length, { message: 'the browser never left for hanzo.ai' }).toBeGreaterThan(0)
+  const to = left[0]
+  expect(to.origin + to.pathname).toBe('https://hanzo.ai/login')
+  expect(to.searchParams.get('prompt')).toBe('select_account')
+  expect(to.searchParams.get('client_id')).toBe('hanzo-market')
   expect(await page.evaluate(() => sessionStorage.getItem('market:return'))).toBe('/experts')
+  // Nobody is signed out to add someone: the account held here stays until another comes back.
+  expect(await holder(page)).toBe('acme/ada')
 })
 
-test('with one account signed in the menu says Log out, which is all of it', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
-  await mock(page, world())
-  await page.goto('/experts/join')
-  await signIn(page, '/experts/join')
-  await iam(page, [ada], true)
-  await page.goto('/experts')
-  await page.getByRole('button', { name: /^Account:/ }).click()
-  const menu = page.getByRole('menu')
-  await expect(menu.getByRole('menuitem', { name: 'Log out' })).toBeVisible()
-  await expect(menu.getByRole('menuitem', { name: 'Sign out of all accounts' })).toHaveCount(0)
-  await expect(menu.getByRole('menuitem', { name: 'Add account' })).toBeVisible()
-})
-
-// ── the fit ──────────────────────────────────────────────────────────────────
-
-for (const screen of [
-  { width: 375, height: 667 },
-  { width: 768, height: 1024 },
-  { width: 1440, height: 900 },
-]) {
-  test(`the chooser at ${screen.width} is centred in the page area above the footer, and does not overflow`, async ({ page }) => {
-    await page.setViewportSize(screen)
-    await mock(page, world())
-    await iam(page, [ada, grace])
-    await page.goto('/login')
-    await expect(rows(page)).toBeVisible()
-    const m = await page.evaluate(() => {
-      const box = (el: Element | null) => {
-        if (!el) throw new Error('not drawn')
-        const r = el.getBoundingClientRect()
-        return { top: r.top, bottom: r.bottom, left: r.left, right: r.right }
-      }
-      return {
-        card: box(document.querySelector('section[aria-label="Accounts"]')),
-        area: box(document.querySelector('main > *')),
-        footer: box(document.querySelector('footer')),
-        overflow: document.documentElement.scrollWidth - window.innerWidth,
-      }
-    })
-    expect(Math.abs((m.card.left + m.card.right) / 2 - screen.width / 2)).toBeLessThanOrEqual(1)
-    expect(m.area.bottom - m.area.top).toBeGreaterThanOrEqual(screen.height - 60 - 1)
-    expect(m.card.bottom).toBeLessThanOrEqual(m.footer.top)
-    expect(Math.abs(m.card.top - m.area.top - (m.area.bottom - m.card.bottom))).toBeLessThanOrEqual(2)
-    expect(m.overflow).toBeLessThanOrEqual(0)
+test('on hanzo.market, Log out hands the tokens back there, then leaves for hanzo.id’s end-session for every Hanzo app, back to the home page', async ({ page, baseURL }) => {
+  const w = world()
+  await market(page, baseURL ?? '')
+  await mock(page, w)
+  // Signed in as the callback leaves a browser: the tokens in this site's storage.
+  await page.addInitScript((t) => {
+    localStorage.setItem('hanzo_iam_access_token', t)
+    localStorage.setItem('hanzo_iam_refresh_token', 'refresh')
+    localStorage.setItem('hanzo_iam_id_token', t)
+    localStorage.setItem('hanzo_iam_expires_at', String(Date.now() + 3_600_000))
+  }, token(w))
+  const left = await departures(page, END_SESSION)
+  const posted: string[] = []
+  page.on('request', (r) => {
+    const u = new URL(r.url())
+    if (r.method() === 'POST' && u.pathname.startsWith('/v1/iam/oauth/')) posted.push(u.origin + u.pathname)
   })
-}
+  await page.goto(`${MARKET}/`)
+  await (await menu(page)).getByRole('menuitem', { name: 'Log out' }).click()
+  await expect.poll(() => left.length, { message: 'the browser never left for hanzo.id' }).toBeGreaterThan(0)
+
+  const out = left[0]
+  expect(out.origin + out.pathname).toBe('https://hanzo.id/v1/iam/oauth/logout')
+  // Every Hanzo app's grant ends with the session, the browser comes back to the home page, and no token rides in the address.
+  expect(Object.fromEntries(out.searchParams)).toEqual({ client_id: 'hanzo-market', everywhere: 'true', post_logout_redirect_uri: `${MARKET}/` })
+  expect(posted).toEqual(expect.arrayContaining([`${MARKET}/v1/iam/oauth/revoke`]))
+  expect(posted.filter((p) => !p.startsWith(MARKET))).toEqual([])
+  expect(await page.evaluate(() => localStorage.getItem('hanzo_iam_access_token'))).toBeNull()
+})
+
+test('on a local page Log out hands the tokens back here and stays local, on the home page, signed out', async ({ page }) => {
+  await member(page, '/experts')
+  const origin = new URL(page.url()).origin
+  const away: string[] = []
+  const posted: string[] = []
+  page.on('request', (r) => {
+    const u = new URL(r.url())
+    if (r.isNavigationRequest() && (u.hostname === 'hanzo.id' || u.hostname === 'hanzo.ai')) away.push(r.url())
+    if (r.method() === 'POST' && u.pathname.startsWith('/v1/iam/oauth/')) posted.push(u.origin + u.pathname)
+  })
+  await (await menu(page)).getByRole('menuitem', { name: 'Log out' }).click()
+  await page.waitForURL((u) => u.origin === origin && u.pathname === '/')
+  await expect(page.getByRole('heading', { name: 'Agents, personas, apps, skills, MCP servers and tools' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Account:/ })).toHaveCount(0)
+  expect(posted).toEqual(expect.arrayContaining([`${origin}/v1/iam/oauth/revoke`, `${origin}/v1/iam/oauth/logout`]))
+  expect(await holder(page)).toBeNull()
+  expect(away).toEqual([])
+})

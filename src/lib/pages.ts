@@ -338,9 +338,9 @@ export function front(shelves: Page[]): Page {
 
 /** The app's own pages that need a session or carry a sign-in: a shell, a twin that says so, and no search. */
 export const PRIVATE: { path: string; title: string; summary: string }[] = [
-  { path: '/login', title: 'Sign in', summary: 'People sign in to Hanzo Market here with Hanzo ID.' },
-  { path: '/signup', title: 'Create an account', summary: 'People create a Hanzo account here.' },
-  { path: '/auth/callback', title: 'Signing in', summary: 'Where Hanzo ID returns a person after sign-in.' },
+  { path: '/login', title: 'Sign in', summary: 'The way in to Hanzo Market: on to hanzo.ai, where people sign in with Hanzo ID.' },
+  { path: '/signup', title: 'Create an account', summary: 'On to hanzo.ai, where people create a Hanzo account.' },
+  { path: '/auth/callback', title: 'Signing in', summary: 'Where hanzo.ai returns a person after sign-in.' },
   { path: '/experts/join', title: 'Become an expert', summary: 'A member lists themself as an expert people can book for a job.' },
   { path: '/jobs', title: 'Jobs', summary: 'A buyer’s jobs: open, accepted, delivered, released or disputed.' },
   { path: '/sell', title: 'Sell', summary: 'An organization sets itself up as a seller: identity, tax form, payout wallet.' },
