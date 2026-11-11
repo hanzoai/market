@@ -65,17 +65,28 @@ describe('the identities IAM holds', () => {
 })
 
 describe('connecting a provider', () => {
-  it('asks IAM on this origin, with the page’s credential and the callback to return to, and goes where IAM says', async () => {
-    serve(() => json({ status: 'ok', data: 'https://hanzo.market/v1/iam/link?state=s1' }))
+  it('asks IAM on hanzo.ai, where the session is, with the page’s bearer and the callback to return to, and goes where IAM says', async () => {
+    serve(() => json({ status: 'ok', data: 'https://hanzo.ai/v1/iam/link?state=s1' }))
     await connect(GITHUB, '/experts/join')
     const call = calls[0]
-    expect(call.url.href).toBe('https://hanzo.market/v1/iam/link')
+    // The link opens on the origin it started on and needs the person's session
+    // there, which lives on hanzo.ai since the market signs in there (D5).
+    expect(call.url.href).toBe('https://hanzo.ai/v1/iam/link')
     expect(call.init.method).toBe('POST')
-    expect(call.init.credentials).toBe('include')
+    // Cross-origin: the bearer names the person, and no cookie rides along.
+    expect(call.init.credentials).toBe('omit')
     expect((call.init.headers as Record<string, string>).Authorization).toBe('Bearer h.e30.s')
     expect(JSON.parse(call.init.body as string)).toEqual({ provider: 'provider-github', clientId: 'hanzo-market', returnUri: 'https://hanzo.market/auth/callback' })
-    expect(assign).toHaveBeenCalledWith('https://hanzo.market/v1/iam/link?state=s1')
+    expect(assign).toHaveBeenCalledWith('https://hanzo.ai/v1/iam/link?state=s1')
     expect(back()).toBe('/experts/join')
+  })
+
+  it('asks its own origin, with its cookie, on a local page', async () => {
+    Object.defineProperty(window, 'location', { value: { origin: 'http://localhost:3330', hostname: 'localhost', pathname: '/experts/join', assign }, configurable: true })
+    serve(() => json({ status: 'ok', data: 'http://localhost:3330/v1/iam/link?state=s2' }))
+    await connect(GITHUB, '/experts/join')
+    expect(calls[0].url.href).toBe('http://localhost:3330/v1/iam/link')
+    expect(calls[0].init.credentials).toBe('include')
   })
 
   it('says IAM’s own words when it refuses, and goes nowhere', async () => {

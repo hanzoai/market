@@ -1,23 +1,24 @@
 // Who is signed in, and the org they act as. hanzo.id is the only issuer and
-// @hanzo/iam is the only client, but nobody is sent there: a person signs in on
-// this site's own /login (src/login.tsx), whose credential calls this origin
-// answers, and the SDK owns the tokens the callback exchanges for. This file
-// reads the session and names the org. Signed in is the SDK's word (a token
-// that is valid or was refreshed), withdrawn the moment the gateway refuses it
-// (401): a token merely left in storage is not a session.
+// @hanzo/iam is the only client. This site is its own OAuth client (hanzo-market)
+// but signs nobody in itself: a person signs in on hanzo.ai's page, which this
+// site leaves for with its own authorize request (`useLeave`), and hanzo.ai sends
+// the code back to /auth/callback, where the SDK exchanges it and keeps the
+// tokens. This site holds no IAM session cookie of its own. This file reads the
+// session and names the org. Signed in is the SDK's word (a token that is valid
+// or was refreshed), withdrawn the moment the gateway refuses it (401): a token
+// merely left in storage is not a session.
 //
 // The org is the one this tab shows, and every request acts as exactly that org.
 // A switch made in another tab is followed here: the screen re-keys to the new
 // org (see Gate) before anything acts as it.
 
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
-import { IAM } from '@hanzo/iam'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react'
 import { IamProvider, useIam } from '@hanzo/iam/react'
 import { useSignOut } from '@hanzo/ui/auth'
 import { useNavigate } from 'react-router'
 
-import { track } from '~/analytics'
-import { iam } from '~/lib/api'
+import { authorize, track } from '~/analytics'
+import { iam, signin, signout } from '~/lib/api'
 import { LAPSED } from '~/lib/http'
 import { choice, org as chosenOrg, orgs as tokenOrgs, own, show, subject, work } from '~/lib/token'
 
@@ -38,14 +39,32 @@ const Ctx = createContext<Session | null>(null)
 
 const RETURN = 'market:return'
 
-/** This site's sign-in and sign-up pages. */
+/** This site's sign-in and sign-up addresses: each leaves for hanzo.ai's own (src/login.tsx). */
 export const LOGIN = '/login'
 export const SIGNUP = '/signup'
 
-/** The IAM client for this page, posting its credential and sign-out calls to this origin. */
-export function useClient(): IAM {
-  const { config } = useIam()
-  return useMemo(() => new IAM({ ...config, proxyBaseUrl: window.location.origin }), [config])
+/**
+ * Leave for hanzo.ai's sign-in (or sign-up) with this site's OWN authorize
+ * request: the SDK builds it and keeps the PKCE verifier and state in this
+ * site's storage, and hanzo.ai's page finishes it, so the code comes back to
+ * this site's /auth/callback. `prompt` asks hanzo.ai something of the sign-in:
+ * `select_account` draws hanzo.ai's account chooser (where another account is
+ * also added) instead of spending its session at once. A provider already
+ * chosen (`?provider=` on this page) rides along, so hanzo.ai starts that
+ * provider's hop instead of asking again. The address carries the visitor, so
+ * the hop is one visit (`authorize`).
+ */
+export function useLeave(): (mode: 'login' | 'signup', prompt?: string) => Promise<void> {
+  const { sdk } = useIam()
+  return useCallback(
+    async (mode: 'login' | 'signup', prompt?: string) => {
+      const request = new URL(await sdk.getSigninUrl(prompt ? { additionalParams: { prompt } } : undefined))
+      const via = new URLSearchParams(window.location.search).get('provider')
+      if (via) request.searchParams.set('provider', via)
+      window.location.replace(authorize(signin(request.href, mode)))
+    },
+    [sdk],
+  )
 }
 
 /** Write the page down, so a sign-in that follows (the first, or another account's) comes back to it. */
@@ -73,8 +92,13 @@ export function destination(): string {
 function Bind({ children }: { children: ReactNode }) {
   const { isLoading, isAuthenticated, accessToken, user } = useIam()
   const go = useNavigate()
-  const client = useClient()
-  const out = useSignOut({ to: `${LOGIN}?from=logout`, track })
+  // Sign-out: both tokens handed back and the end-session call made on this
+  // origin, as before (a session cookie a sign-in here once left ends with it),
+  // the local session cleared, and then the browser goes to hanzo.id's
+  // end-session (`signout`), which ends the session on hanzo.ai and hanzo.id with
+  // every Hanzo app's grant and returns it to this site's home page, a public
+  // page, not a sign-in. A local page lands on its own home page instead.
+  const out = useSignOut({ to: signout(window.location.origin), track })
   const [picked, setPicked] = useState<string | null>(() => chosenOrg())
   // The token the gateway refused; a new one (a refresh, a sign-in) is a new session.
   const [refused, setRefused] = useState<string | null>(null)
@@ -120,9 +144,9 @@ function Bind({ children }: { children: ReactNode }) {
         remember()
         void go(LOGIN)
       },
-      signOut: () => void client.end().then(out),
+      signOut: () => void out(),
     }
-  }, [isLoading, isAuthenticated, accessToken, refused, user, picked, go, client, out])
+  }, [isLoading, isAuthenticated, accessToken, refused, user, picked, go, out])
 
   return <Ctx.Provider value={session}>{children}</Ctx.Provider>
 }

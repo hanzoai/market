@@ -5,19 +5,19 @@ import { useNavigate } from 'react-router'
 
 import { track } from '~/analytics'
 import { back, returned } from '~/lib/linked'
-import { takeMethod } from '~/pick'
 import { destination } from '~/session'
 
 /**
- * The return from the sign-in on /login, and from connecting a provider to the
+ * The return from the sign-in on hanzo.ai, and from connecting a provider to the
  * account (`~/lib/linked`): that one brings no code, so it goes back to the page
  * it left, carrying IAM's reason when it refused.
  *
- * The return from the sign-in on /login. The SDK reads the code and state from
- * the URL and the PKCE verifier from storage, exchanges the code and stores the
- * tokens; this screen counts login_completed, with the way in the sign-in card
- * noted, and decides where the reader lands. A failed exchange is shown, never
- * swallowed.
+ * The return from the sign-in on hanzo.ai, which this site left for with its own
+ * authorize request (`useLeave`). The SDK reads the code and state from the URL
+ * and the PKCE verifier from this site's storage, exchanges the code and stores
+ * the tokens; this screen counts login_completed and decides where the reader
+ * lands. The way in was chosen on hanzo.ai, which counts it there. A failed
+ * exchange is shown, never swallowed.
  */
 export function Callback() {
   const go = useNavigate()
@@ -35,8 +35,7 @@ export function Callback() {
     handleCallback()
       .then(() => {
         if (!live) return
-        const method = takeMethod()
-        track('login_completed', method ? { method } : {})
+        track('login_completed')
         void go(destination(), { replace: true })
       })
       .catch((e: unknown) => {

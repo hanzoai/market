@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { departures } from './flow'
+
 // Read-only checks that run against a deployed storefront (BASE_URL=…) as well
 // as the dev server. No sign-in, no writes, no payments.
 
@@ -24,15 +26,20 @@ test('@live deep links land on the app', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Sign in to continue' })).toBeVisible()
 })
 
-test('@live signing in stays on this site: /login draws the sign-in and nothing goes to hanzo.id', async ({ page }) => {
+test('@live signing in is on hanzo.ai: Try Hanzo leaves for hanzo.ai/login with this site’s own request, nothing is typed here and nothing goes to hanzo.id', async ({ page }) => {
   const issuer: string[] = []
   page.on('request', (r) => {
     if (r.isNavigationRequest() && new URL(r.url()).hostname === 'hanzo.id') issuer.push(r.url())
   })
+  // hanzo.ai's page is refused, so this signs nobody in.
+  const left = await departures(page)
   await page.goto('/sell')
   await page.getByRole('button', { name: 'Try Hanzo' }).click()
-  await page.waitForURL((u) => u.pathname === '/login')
-  await expect(page.getByRole('textbox', { name: 'Email' })).toBeVisible()
+  await expect.poll(() => left.length, { message: 'the browser never left for hanzo.ai' }).toBeGreaterThan(0)
+  expect(left[0].origin + left[0].pathname).toBe('https://hanzo.ai/login')
+  expect(left[0].searchParams.get('client_id')).toBe('hanzo-market')
+  expect(left[0].searchParams.get('redirect_uri')).toBe(`${new URL(page.url()).origin}/auth/callback`)
+  await expect(page.getByRole('textbox', { name: 'Email' })).toHaveCount(0)
   expect(issuer).toEqual([])
 })
 

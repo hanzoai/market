@@ -7,10 +7,12 @@ can be booked.
 It is a static storefront. `vite build` writes `dist/`; the site lane in
 [hanzoai/ci](https://github.com/hanzoai/ci) publishes it to the sites plane, and
 the edge serves it at https://hanzo.market. There is no server in this repo:
-every read and write is an api.hanzo.ai `/v1` operation. Sign-in is Hanzo IAM
-on this site's own `/login` (`@hanzo/ui/auth`'s `SignIn`, code + PKCE through
-`@hanzo/iam`): the edge answers IAM's credential and sign-out routes on
-hanzo.market, so nobody is sent to hanzo.id. Our stream, the ad tags and consent
+every read and write is an api.hanzo.ai `/v1` operation. The storefront is
+public; signing in is Hanzo IAM on hanzo.ai's page: `/login` and `/signup` leave
+for https://hanzo.ai/login (or /signup) with this site's own authorize request
+(client `hanzo-market`, code + PKCE through `@hanzo/iam`), and the code comes
+back to `/auth/callback`. Sign-out hands the tokens back and ends the session
+through hanzo.id, back to the home page. Our stream, the ad tags and consent
 are `@hanzo/event` (`src/analytics.tsx`): the tags are the project's tag set in
 cloud, loaded only as consent allows.
 

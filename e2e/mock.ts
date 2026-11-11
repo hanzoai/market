@@ -2,7 +2,9 @@
 // api.hanzo.ai (`/v1/…`, `/.well-known/agent-skills/…`) and to hanzo.id is
 // answered here from a small stateful world, so a flow's writes are visible to
 // its later reads. Anything the world does not know answers 404 problem+json —
-// exactly what the live gateway says for an operation it does not serve.
+// exactly what the live gateway says for an operation it does not serve. The
+// pages of hanzo.ai the storefront leaves for (its sign-in and sign-up) are
+// stood in for too, so a run never reaches the real ones.
 //
 // The shapes are cloud's (hanzo-inc/cloud 039a518e9). A hire is its two steps: a
 // 402 with x402 terms, then the payment, whose signature is checked against the
@@ -746,7 +748,7 @@ async function api(route: Route, w: World) {
   return absent(route, path)
 }
 
-async function iam(route: Route, w: World, base: string) {
+async function iam(route: Route, w: World) {
   const req = route.request()
   const url = new URL(req.url())
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }
@@ -766,16 +768,7 @@ async function iam(route: Route, w: World, base: string) {
       },
       cors,
     )
-  // The embedded sign-in's credential call, posted to the page's own origin: this
-  // browser holds a session, so IAM answers it with a code (its single sign-on branch).
-  if (url.pathname === '/v1/iam/login') return json(route, 200, { status: 'ok', data: 'test-code' }, cors)
   if (url.pathname === '/v1/iam/oauth/revoke' || url.pathname === '/v1/iam/oauth/logout') return json(route, 200, { status: 'ok' }, cors)
-  if (url.pathname === '/v1/iam/oauth/authorize') {
-    const back = new URL(url.searchParams.get('redirect_uri') ?? `${base}/auth/callback`)
-    back.searchParams.set('code', 'test-code')
-    back.searchParams.set('state', url.searchParams.get('state') ?? '')
-    return route.fulfill({ status: 302, headers: { location: back.toString() } })
-  }
   if (url.pathname === '/v1/iam/oauth/token')
     return json(
       route,
@@ -788,13 +781,38 @@ async function iam(route: Route, w: World, base: string) {
   return route.fulfill({ status: 404, headers: cors })
 }
 
-/** Serve the platform and the issuer from `w` for this page. */
+/** hanzo.ai's pages the storefront leaves for: its sign-in and sign-up. */
+export const HANZO_AI = /^https:\/\/hanzo\.ai\/(login|signup)(\?|$)/
+
+/** hanzo.id's end-session, which a sign-out on the published host leaves for. */
+export const END_SESSION = /^https:\/\/hanzo\.id\/v1\/iam\/oauth\/logout(\?|$)/
+
+/**
+ * hanzo.ai, as the storefront meets it. This browser holds a session there, so a
+ * sign-in that asks nothing of it is answered at once, as hanzo.ai answers a
+ * Hanzo site's own request: back to that request's callback with a code and its
+ * state, which the storefront then exchanges with hanzo.id. A request that asks
+ * the person (`prompt`: Switch account, Add account) is hanzo.ai's account
+ * chooser, a page that stays put here.
+ */
+function hanzoAi(route: Route) {
+  const url = new URL(route.request().url())
+  if (url.searchParams.get('prompt')) return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><h1>Choose an account</h1>' })
+  const callback = url.searchParams.get('redirect_uri')
+  if (!callback) return route.fulfill({ status: 400, contentType: 'text/html', body: '<!doctype html><h1>The request names no callback</h1>' })
+  const back = new URL(callback)
+  back.searchParams.set('code', 'test-code')
+  back.searchParams.set('state', url.searchParams.get('state') ?? '')
+  return route.fulfill({ status: 302, headers: { location: back.toString() } })
+}
+
+/** Serve the platform, the issuer and hanzo.ai's sign-in from `w` for this page. */
 export async function mock(page: Page, w: World) {
-  const base = new URL(page.url() === 'about:blank' ? 'http://127.0.0.1' : page.url()).origin
   await page.route(/\/v1\//, (route) => {
     const u = new URL(route.request().url())
-    return u.hostname === 'hanzo.id' || u.pathname.startsWith('/v1/iam/') ? iam(route, w, base) : api(route, w)
+    return u.hostname === 'hanzo.id' || u.pathname.startsWith('/v1/iam/') ? iam(route, w) : api(route, w)
   })
   await page.route(/\/\.well-known\/agent-skills\//, (route) => api(route, w))
-  await page.route(/^https:\/\/hanzo\.id\//, (route) => iam(route, w, base))
+  await page.route(/^https:\/\/hanzo\.id\//, (route) => iam(route, w))
+  await page.route(HANZO_AI, hanzoAi)
 }
