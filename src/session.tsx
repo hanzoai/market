@@ -58,10 +58,10 @@ export function useLeave(): (mode: 'login' | 'signup', prompt?: string) => Promi
   const { sdk } = useIam()
   return useCallback(
     async (mode: 'login' | 'signup', prompt?: string) => {
-      const own = new URL(await sdk.getSigninUrl(prompt ? { additionalParams: { prompt } } : undefined))
+      const request = new URL(await sdk.getSigninUrl(prompt ? { additionalParams: { prompt } } : undefined))
       const via = new URLSearchParams(window.location.search).get('provider')
-      if (via) own.searchParams.set('provider', via)
-      window.location.replace(authorize(signin(own.href, mode)))
+      if (via) request.searchParams.set('provider', via)
+      window.location.replace(authorize(signin(request.href, mode)))
     },
     [sdk],
   )
