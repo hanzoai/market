@@ -349,6 +349,48 @@ function Shown({ d }: { d: Detail }) {
         </YStack>
       </XStack>
 
+      {d.capability ? (
+        <Section
+          title="Kai Shared Latent Space & Evaluation Gate"
+          says="Trained over the frozen Kai mmBERT 307M foundation and verified for zero out-of-distribution drift."
+        >
+          <XStack gap="$3" flexWrap="wrap">
+            <Count of={`+${d.capability.repairs}`} says="Repairs" />
+            <Count of={d.capability.damage} says="Damage" />
+            <Count of={d.capability.oodMoved} says="OOD moved" />
+            <Count of={`+${d.capability.latencyUs} µs`} says="Latency" />
+          </XStack>
+          <Panel gap="$2">
+            <XStack justify="space-between" gap="$3" flexWrap="wrap">
+              <Text fontSize="$2" color="$quiet">
+                Representation SHA-256
+              </Text>
+              <Text fontSize="$2" color="$ink" fontFamily="$mono">
+                {d.capability.representation}
+              </Text>
+            </XStack>
+            <XStack justify="space-between" gap="$3" flexWrap="wrap">
+              <Text fontSize="$2" color="$quiet">
+                Form
+              </Text>
+              <Text fontSize="$2" color="$ink">
+                {d.capability.form}{d.capability.rank ? ` (rank ${d.capability.rank})` : ''}
+              </Text>
+            </XStack>
+            {d.capability.labels.length ? (
+              <XStack justify="space-between" gap="$3" flexWrap="wrap">
+                <Text fontSize="$2" color="$quiet">
+                  Options / Labels
+                </Text>
+                <Text fontSize="$2" color="$ink" fontFamily="$mono">
+                  {d.capability.labels.join(', ')}
+                </Text>
+              </XStack>
+            ) : null}
+          </Panel>
+        </Section>
+      ) : null}
+
       <Section title="Reputation">
         <Rep d={d} />
       </Section>
@@ -367,10 +409,11 @@ function Shown({ d }: { d: Detail }) {
 
       <Section
         title="Contribute & Earn (OSS + x402)"
-        says="Every Hanzo agent, persona, skill, MCP server, and template is open-source. Fork or improve it on GitHub, or publish your own on Hanzo Market and get paid automatically over x402 whenever people or agents use your work."
+        says="Every Hanzo agent, persona, Kai capability, skill, MCP server, and template is open-source or monetizable. Fork or improve it on GitHub, train new capabilities in Hanzo Platform, or publish your own on Hanzo Market and get paid automatically over x402 whenever people or agents use your work."
       >
         <XStack gap="$2" flexWrap="wrap">
           <Go to="/sell">Publish & earn on Hanzo Market</Go>
+          <Go to="https://platform.hanzo.ai/capabilities/corrections">Train a Kai capability</Go>
           <Go to="https://github.com/hanzoai">Contribute on GitHub</Go>
           <Go to="https://docs.hanzo.ai/docs/marketplace">Creator payout docs</Go>
         </XStack>

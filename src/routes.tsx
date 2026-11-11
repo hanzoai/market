@@ -24,6 +24,7 @@ export const routes = [
       { path: '/experts/join', element: <Join /> },
       { path: '/experts/:id', element: <ListingPage /> },
       { path: '/personas', element: <Browse kind="persona" /> },
+      { path: '/capabilities', element: <Browse kind="capability" /> },
       { path: '/apps', element: <Browse kind="app" /> },
       { path: '/skills', element: <Browse kind="skill" /> },
       { path: '/mcp', element: <Browse kind="mcp" /> },

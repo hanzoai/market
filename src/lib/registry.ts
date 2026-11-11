@@ -3,7 +3,7 @@
 // inspect, fork, contribute pull requests, or publish their own variant on
 // hanzo.market and earn x402 revenue share on every call or job.
 
-import type { Kind, McpListing, Reputation, Shop, ShopListing } from '~/lib/market'
+import type { CapabilitySpec, Kind, McpListing, Reputation, Shop, ShopListing } from '~/lib/market'
 
 /** No settled job, review or install: the directory's entries are not shop listings. */
 const ZERO_REP: Reputation = {
@@ -14,6 +14,53 @@ const ZERO_REP: Reputation = {
 }
 
 const CREATED = 1790737083
+const KAI_MMBERT_REP = '17e3cf68617d2bf5915b6d88513c8a1ca89eb82069a3159b3eb22e3d0bf65b6c'
+const KAI_BASE_SHA = 'e8b1234a90d817c6e452f0198a3b74c56d1209e8f34a7b61c290d8e4f5a123b0'
+
+function capabilityListing(
+  tool: string,
+  title: string,
+  category: string,
+  description: string,
+  spec: Pick<CapabilitySpec, 'sha256' | 'form' | 'questionKey' | 'questionType' | 'labels' | 'repairs' | 'damage' | 'latencyUs'> &
+    Partial<Pick<CapabilitySpec, 'rank' | 'bytes' | 'fireRate' | 'specificity' | 'license'>>,
+): ShopListing {
+  const id = `lst_cap_${tool}`
+  const docs = 'https://docs.hanzo.ai/docs/capabilities'
+  return {
+    id,
+    publisherOrg: 'hanzo',
+    kind: 'capability',
+    tool,
+    title,
+    description,
+    category,
+    price: '0',
+    currency: 'USD',
+    public: true,
+    docs,
+    createdAt: CREATED,
+    updatedAt: CREATED,
+    seller: { org: 'hanzo', documented: true, reputation: ZERO_REP },
+    reputation: ZERO_REP,
+    capability: {
+      baseSha256: KAI_BASE_SHA,
+      representation: KAI_MMBERT_REP,
+      rank: spec.rank ?? 0,
+      bytes: spec.bytes ?? 18432,
+      fireRate: spec.fireRate ?? 1.0,
+      specificity: spec.specificity ?? 1.0,
+      oodMoved: 0,
+      license: spec.license ?? 'Apache-2.0',
+      ...spec,
+    },
+    links: {
+      docs,
+      cli: `hanzo marketplace install --tool ${tool}`,
+      mcp: { tool: 'marketplace', op: 'post_marketplace_install' },
+    },
+  }
+}
 
 function agentListing(
   tool: string,
@@ -314,6 +361,230 @@ export const DEFAULT_LISTINGS: readonly ShopListing[] = [
     '0.003',
     'Transcribes speech streams with speaker diarization and synthesizes natural low-latency voice output via Hanzo Voice.',
     'https://github.com/hanzoai/mcp',
+  ),
+  capabilityListing(
+    'kai-tool-relevance',
+    'kai-tool-relevance — MCP Tool Selection & Relevance Adapter',
+    'Routing',
+    'Scores and selects relevant MCP tools from a user prompt over the frozen Kai mmBERT 307M shared representation with zero OOD drift.',
+    {
+      sha256: '4a9f0c812e1d58c3b972f4019c86a3102b7e65d91847f6e201a5c3948b7162d3',
+      form: 'adapter',
+      questionKey: 'tool_relevance',
+      questionType: 'choice',
+      labels: ['relevant', 'irrelevant'],
+      repairs: 142,
+      damage: 0,
+      latencyUs: 8,
+    },
+  ),
+  capabilityListing(
+    'jailbreak-400',
+    'jailbreak-400 — Prompt Injection & Jailbreak Guard Adapter',
+    'Safety',
+    'Detects adversarial prompt injections, system-prompt extraction attempts, and jailbreaks in a single encoder pass.',
+    {
+      sha256: '7c82d41e9a0b35f6281c47e90d3a52b18f6e4092c17d8a35b649e01f2d73c8a4',
+      form: 'adapter',
+      questionKey: 'guardrails_jailbreak',
+      questionType: 'choice',
+      labels: ['safe', 'jailbreak'],
+      repairs: 394,
+      damage: 0,
+      latencyUs: 6,
+    },
+  ),
+  capabilityListing(
+    'toxicchat-guard',
+    'toxicchat-guard — Conversational Toxicity & Policy Reader (Kai 1.13)',
+    'Safety',
+    'Calibrated conversational toxicity and policy-violation reader trained on real-world user-assistant dialogues (live Rust F1 0.7874 vs Jev 0.7862).',
+    {
+      sha256: 'ae37acf17a2a92db6f7d39720b9bf817f9b4e3a7a3b3eef39e80d59f40117a87',
+      form: 'reader',
+      questionKey: 'toxic',
+      questionType: 'noul',
+      labels: ['benign', 'toxic'],
+      repairs: 218,
+      damage: 0,
+      latencyUs: 12,
+    },
+  ),
+  capabilityListing(
+    'stsb-spearman',
+    'stsb-spearman — Semantic Textual Similarity Reader (Kai 1.13)',
+    'Ranking',
+    'Continuous semantic equivalence and paraphrase similarity reader trained with Spearman rank-correlation supervision (live Rust Spearman 0.890214 vs Jev 0.890162).',
+    {
+      sha256: '08deef13955b72e5c154b6d774e386cd5e6a8c45fb4856b8a70b986b7705bf40',
+      form: 'reader',
+      questionKey: 'answer',
+      questionType: 'score',
+      labels: [],
+      repairs: 185,
+      damage: 0,
+      latencyUs: 11,
+    },
+  ),
+  capabilityListing(
+    'prompt-injection-guard',
+    'prompt-injection-guard — Adversarial Prompt Injection Adapter (Kai 1.13)',
+    'Safety',
+    'Detects direct and indirect prompt-injection attacks in user inputs and retrieved context (90.52% accuracy vs Jev 74.14%).',
+    {
+      sha256: 'bf4922a2b778a6d57ef6fe415ad61b6d5165c441ab156f8f2a2f74d6a9706192',
+      form: 'adapter',
+      questionKey: 'answer',
+      questionType: 'noul',
+      labels: ['legitimate', 'injection'],
+      repairs: 94,
+      damage: 0,
+      latencyUs: 6,
+    },
+  ),
+  capabilityListing(
+    'language-id-200',
+    'language-id-200 — 200-Language Identification Reader (Kai 1.13)',
+    'Multilingual',
+    'High-precision language identification reader across 200 languages over Kai mmBERT 307M (99.85% accuracy vs Jev 99.64%).',
+    {
+      sha256: 'e3985df7a31445496029ba82393f2e7cd283c226a304430e79293b742ae2b71a',
+      form: 'reader',
+      questionKey: 'answer',
+      questionType: 'choice',
+      labels: ['en', 'zh', 'es', 'de', 'fr', 'ar', 'hi', 'ja', 'ru', 'pt'],
+      repairs: 312,
+      damage: 0,
+      latencyUs: 10,
+    },
+  ),
+  capabilityListing(
+    'paws-paraphrase',
+    'paws-paraphrase — Adversarial Paraphrase Verification Reader (Kai 1.13)',
+    'Reasoning',
+    'Distinguishes true semantic paraphrases from high-lexical-overlap adversarial non-paraphrases on PAWS (90.28% accuracy vs Jev 84.99%).',
+    {
+      sha256: '430ebccc50b0d838234fe6f95924059a30a40fc8412ec21d9875537503a00ef7',
+      form: 'reader',
+      questionKey: 'answer',
+      questionType: 'noul',
+      labels: ['different', 'paraphrase'],
+      repairs: 423,
+      damage: 0,
+      latencyUs: 12,
+    },
+  ),
+  capabilityListing(
+    'financial-phrasebank',
+    'financial-phrasebank — Financial Sentiment & Earnings Polarity Adapter (Kai 1.13)',
+    'Finance',
+    'Classifies financial news, earnings call statements, and analyst commentary into positive, neutral, or negative sentiment (80.41% accuracy vs Jev 72.99%).',
+    {
+      sha256: '15755c5850c7678d70a4dbc2780f9dabab675b942905ac9f6fa723dd546f8423',
+      form: 'adapter',
+      questionKey: 'answer',
+      questionType: 'choice',
+      labels: ['negative', 'neutral', 'positive'],
+      repairs: 72,
+      damage: 0,
+      latencyUs: 6,
+    },
+  ),
+  capabilityListing(
+    'clinc150-intent',
+    'clinc150-intent — 150-Class Conversational Intent & OOS Router (Kai 1.13)',
+    'Routing',
+    'Routes user utterances across 150 banking, travel, utility, and enterprise intents plus out-of-scope detection (91.71% accuracy vs Jev 89.45%).',
+    {
+      sha256: 'ab26bfbcd3df14a51424ba5f217b35fb7da08186b0475122ba53d9f4ed8d0e3f',
+      form: 'adapter',
+      questionKey: 'answer',
+      questionType: 'choice',
+      labels: ['transfer', 'balance', 'freeze_account', 'oos'],
+      repairs: 164,
+      damage: 0,
+      latencyUs: 8,
+    },
+  ),
+  capabilityListing(
+    'sms-spam-filter',
+    'sms-spam-filter — Mobile & Messaging Spam Guard Adapter (Kai 1.13)',
+    'Safety',
+    'Filters SMS, messaging, and notification spam with calibrated precision/recall (F1 0.9409 vs Jev 0.9381).',
+    {
+      sha256: '9faed2e06045000353bf674ba7e4a7e51372d0763218d757851f53c95bddc6c8',
+      form: 'adapter',
+      questionKey: 'answer',
+      questionType: 'noul',
+      labels: ['ham', 'spam'],
+      repairs: 89,
+      damage: 0,
+      latencyUs: 6,
+    },
+  ),
+  capabilityListing(
+    'unfair-tos-legal',
+    'unfair-tos-legal — Unfair Terms-of-Service Clause Detector (Kai 1.13)',
+    'Legal',
+    'Detects potentially unfair consumer contract clauses including unilateral termination, liability limitation, and mandatory arbitration (micro-F1 0.5596 vs Jev 0.4993).',
+    {
+      sha256: 'c26a51945f4b4617e77c411b56b22e09c12ae0a7051f3445e7b8da95ea67eb90',
+      form: 'adapter',
+      questionKey: 'limitation_of_liability',
+      questionType: 'noul',
+      labels: ['fair', 'unfair'],
+      repairs: 112,
+      damage: 0,
+      latencyUs: 7,
+    },
+  ),
+  capabilityListing(
+    'agb-de-clauses',
+    'agb-de-clauses — German Consumer Contract (AGB) Clause Adapter (Kai 1.13)',
+    'Legal',
+    'Identifies invalid or unfair clauses in German consumer terms and conditions under BGB §307–309 (F1 0.2400 vs Jev 0.2038).',
+    {
+      sha256: 'c6aa324355674580ac9697eea152702ea4f0ce7c74175f7a085df4049c862afe',
+      form: 'adapter',
+      questionKey: 'answer',
+      questionType: 'noul',
+      labels: ['valid', 'potentially_void'],
+      repairs: 34,
+      damage: 0,
+      latencyUs: 6,
+    },
+  ),
+  capabilityListing(
+    'go-emotions-28',
+    'go-emotions-28 — Fine-Grained 28-Emotion Affect Adapter Suite (Kai 1.13)',
+    'Classification',
+    'Multi-label fine-grained emotion recognition across 28 affective states (macro-F1 0.4058 vs Jev 0.2434).',
+    {
+      sha256: '8ba02d309cf897acd941686f1b1a8d8497f93220eab0d393b894f01fffae6174',
+      form: 'adapter',
+      questionKey: 'admiration',
+      questionType: 'noul',
+      labels: ['admiration', 'gratitude', 'joy', 'optimism', 'curiosity', 'neutral'],
+      repairs: 540,
+      damage: 0,
+      latencyUs: 8,
+    },
+  ),
+  capabilityListing(
+    'triage',
+    'triage — Support Ticket & Issue Routing Adapter',
+    'Operations',
+    'Routes incoming support requests and engineering incidents into billing, security, outage, or product queues in microseconds.',
+    {
+      sha256: '5b3e91a70c84d2f6193b8e40a7c52d19f6e8034c21a7d95b680e41f3c92a76d8',
+      form: 'adapter',
+      questionKey: 'triage',
+      questionType: 'choice',
+      labels: ['billing', 'security', 'outage', 'product'],
+      repairs: 128,
+      damage: 0,
+      latencyUs: 9,
+    },
   ),
 ]
 

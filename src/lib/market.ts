@@ -13,10 +13,10 @@ import { held, inflight } from '~/lib/job'
 import { dollars } from '~/lib/money'
 import { digest, nonce, payment, rail, terms, vet, type Authorization } from '~/lib/x402'
 
-/** What a listing sells. A tool is the platform's, sold per call; an expert is a person; everything else is hired for a job. */
-export type Kind = 'agent' | 'expert' | 'persona' | 'app' | 'skill' | 'mcp' | 'tool' | 'template'
+/** What a listing sells. A tool is the platform's, sold per call; an expert is a person; a capability is a Kai capability head over the shared latent representation; everything else is hired for a job. */
+export type Kind = 'agent' | 'expert' | 'persona' | 'capability' | 'app' | 'skill' | 'mcp' | 'tool' | 'template'
 /** In the order the shop facets them. */
-export const KINDS: readonly Kind[] = ['agent', 'expert', 'persona', 'app', 'skill', 'mcp', 'tool', 'template']
+export const KINDS: readonly Kind[] = ['agent', 'expert', 'persona', 'capability', 'app', 'skill', 'mcp', 'tool', 'template']
 
 // ── /v1/marketplace: the shop and an org's listings ─────────────────────────
 
@@ -83,6 +83,26 @@ export interface Expert extends ExpertProfile {
   top?: string[]
 }
 
+/** Verified Kai capability metadata attached to a capability listing. */
+export interface CapabilitySpec {
+  sha256: string
+  baseSha256: string
+  representation: string
+  form: string
+  rank: number
+  bytes: number
+  questionKey: string
+  questionType: string
+  labels: string[]
+  repairs: number
+  damage: number
+  fireRate: number
+  specificity: number
+  oodMoved: number
+  latencyUs: number
+  license: string
+}
+
 /** One of the caller org's own listings. */
 export interface Listing {
   id: string
@@ -95,7 +115,7 @@ export interface Listing {
   title: string
   description: string
   category: string
-  /** Per call for a tool, per job otherwise; "0" is free. */
+  /** Per call for a tool, per fire for a capability, per job otherwise; "0" is free. */
   price: string
   currency: string
   /** Payout wallet id in publisherOrg. */
@@ -104,6 +124,7 @@ export interface Listing {
   docs?: string
   /** Only on kind expert; `self` is the platform's word that the caller is that expert, omitted when they are not. */
   expert?: Expert & { self?: boolean }
+  capability?: CapabilitySpec
   createdAt: number
   updatedAt: number
 }
@@ -123,6 +144,7 @@ export interface ShopListing {
   docs?: string
   /** Only on kind expert. */
   expert?: Expert
+  capability?: CapabilitySpec
   createdAt: number
   updatedAt: number
   /** What anyone may know about the seller: documented is a certified, valid tax form. */
@@ -151,6 +173,7 @@ export interface PublishReq {
   recipient?: string
   public?: boolean
   docs?: string
+  capability?: { license?: string }
 }
 
 /** An expert's listing: no `tool`, which the platform derives. Any signed-in member may publish one. */
@@ -194,6 +217,19 @@ export const shop = (q: ShopQuery) => request<Shop>({ path: '/v1/marketplace/sho
 export const shopListing = (id: string) =>
   request<ShopListing>({ path: `/v1/marketplace/shop/${encodeURIComponent(id)}`, anonymous: true })
 
+/** GET /v1/marketplace/shop/{id}/weights — downloadable .tar weights (base64) for open-source capabilities. */
+export const capabilityWeights = (id: string) =>
+  request<{ name: string; version: number; sha256: string; base_sha256: string; representation: string; form: string; bytes: number; tar: string }>({
+    path: `/v1/marketplace/shop/${encodeURIComponent(id)}/weights`,
+    anonymous: true,
+  })
+
+/** GET /v1/capabilities — the caller org's own Kai capabilities. */
+export const ownCapabilities = () =>
+  request<{ data: { name: string; state: string; version: number; installed: number; question?: { key: string; type: string; labels: string[] } }[] }>({
+    path: '/v1/capabilities',
+  })
+
 /** GET /v1/marketplace/listings — the caller org's own listings. */
 export const ownListings = () => request<{ listings: Listing[] }>({ path: '/v1/marketplace/listings' })
 
@@ -209,7 +245,7 @@ export const updateListing = (id: string, patch: ListingPatch) =>
 export const unpublish = (id: string) =>
   request<void>({ method: 'DELETE', path: `/v1/marketplace/listings/${encodeURIComponent(id)}` })
 
-/** POST /v1/marketplace/install — activates one tool for the caller's org and project. */
+/** POST /v1/marketplace/install — activates one tool or capability for the caller's org and project. */
 export const install = (tool: string) =>
   request<{ tool: string; installed: boolean }>({ method: 'POST', path: '/v1/marketplace/install', body: { tool } })
 

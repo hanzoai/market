@@ -271,6 +271,7 @@ const SHELF: Record<Kind, string> = {
   agent: 'Agents to hire for a job, paid at release, and the agents of the storefront’s directory.',
   expert: 'People to book for a job: what they work on, their languages, hours and rate.',
   persona: 'Open-source personas from @hanzo/personas: who a model speaks as, and how it reasons.',
+  capability: 'Kai decision capability heads trained over the shared mmBERT 307M latent representation, open-source or paid per fire.',
   app: 'Projects, apps and sites built on the Hanzo platform, from GET /v1/catalog.',
   skill: 'Skills from the platform’s directory: one SKILL.md per operation, for an agent to load.',
   mcp: 'MCP servers and connectors.',
