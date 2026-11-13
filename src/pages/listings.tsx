@@ -235,7 +235,7 @@ function Form() {
               <Choice
                 label="Open-source license"
                 value={license}
-                set={(v) => setLicense(v as 'MIT' | 'Apache-2.0')}
+                set={setLicense}
                 of={[
                   { value: 'Apache-2.0', label: 'Apache-2.0 (eligible for upstream Kai)' },
                   { value: 'MIT', label: 'MIT (eligible for upstream Kai)' },
