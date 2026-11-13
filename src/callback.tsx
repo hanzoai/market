@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router'
 
 import { track } from '~/analytics'
 import { back, returned } from '~/lib/linked'
+import { settle } from '~/lib/silent'
 import { destination } from '~/session'
 
 /**
@@ -18,6 +19,11 @@ import { destination } from '~/session'
  * the tokens; this screen counts login_completed and decides where the reader
  * lands. The way in was chosen on hanzo.ai, which counts it there. A failed
  * exchange is shown, never swallowed.
+ *
+ * And the return from this tab's silent ask (`~/lib/silent`): a code is
+ * exchanged the same way and counted as a sign-in by the session hanzo.ai held;
+ * IAM's word that nobody is signed in there (`login_required` and its kin, for
+ * this tab's own ask alone) goes back to the page the ask left, saying nothing.
  */
 export function Callback() {
   const go = useNavigate()
@@ -32,10 +38,15 @@ export function Callback() {
       void go(back(), { replace: true, state: 'refused' in connect ? { refused: connect.refused } : undefined })
       return undefined
     }
+    const ask = settle(window.location.search)
+    if (ask === 'refused') {
+      void go(destination(), { replace: true })
+      return undefined
+    }
     handleCallback()
       .then(() => {
         if (!live) return
-        track('login_completed')
+        track('login_completed', ask === 'answered' ? { method: 'session' } : {})
         void go(destination(), { replace: true })
       })
       .catch((e: unknown) => {
