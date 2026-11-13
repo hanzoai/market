@@ -20,6 +20,7 @@ import { useNavigate } from 'react-router'
 import { authorize, track } from '~/analytics'
 import { iam, signin, signout } from '~/lib/api'
 import { LAPSED } from '~/lib/http'
+import { due, REASK, revoked, silent, spend } from '~/lib/silent'
 import { choice, org as chosenOrg, orgs as tokenOrgs, own, show, subject, work } from '~/lib/token'
 
 export interface Session {
@@ -90,7 +91,7 @@ export function destination(): string {
 }
 
 function Bind({ children }: { children: ReactNode }) {
-  const { isLoading, isAuthenticated, accessToken, user } = useIam()
+  const { isLoading, isAuthenticated, accessToken, user, sdk } = useIam()
   const go = useNavigate()
   // Sign-out: both tokens handed back and the end-session call made on this
   // origin, as before (a session cookie a sign-in here once left ends with it),
@@ -114,6 +115,69 @@ function Bind({ children }: { children: ReactNode }) {
     own(subject())
     setPicked(chosenOrg())
   }, [isLoading, isAuthenticated])
+
+  // SIGNED IN ON ANOTHER HANZO SITE IS SIGNED IN HERE (~/lib/silent). A tab with no
+  // tokens asks hanzo.ai, with no page, on a page it opens and again when it is
+  // looked at, at most once a minute, and never from a page the reader has typed
+  // into, which leaving would lose. Not from the sign-in pages or the callback,
+  // which make or finish their own.
+  useEffect(() => {
+    if (isLoading || isAuthenticated) return undefined
+    const { pathname } = window.location
+    if (pathname.startsWith('/auth/') || pathname === LOGIN || pathname === SIGNUP) return undefined
+    const ask = () => {
+      spend()
+      remember()
+      void sdk.getSigninUrl({ additionalParams: { prompt: 'none' } }).then(
+        (request) => window.location.replace(authorize(silent(request))),
+        () => undefined,
+      )
+    }
+    if (due()) {
+      ask()
+      return undefined
+    }
+    let typed = false
+    const type = () => {
+      typed = true
+    }
+    const seen = () => {
+      if (document.visibilityState === 'visible' && !typed && due()) ask()
+    }
+    document.addEventListener('input', type, true)
+    document.addEventListener('visibilitychange', seen)
+    return () => {
+      document.removeEventListener('input', type, true)
+      document.removeEventListener('visibilitychange', seen)
+    }
+  }, [isLoading, isAuthenticated, sdk])
+
+  // A SIGN-OUT ON ANY HANZO SITE SIGNS THIS ONE OUT. Leaving any first-party site
+  // retires the person's grant to all of them (hanzoai/iam `revokeShared`,
+  // IAM_SIGNOUT_APPS), and IAM's userinfo then answers this site's token 401, while
+  // the token itself would pass for its seven days. It is asked where the SDK's own
+  // read came back empty, and again when the tab is looked at after a minute or
+  // more; a 401 drops the tokens and the page reloads signed out. A network fault or
+  // a 5xx signs nobody out.
+  useEffect(() => {
+    if (isLoading || !isAuthenticated) return undefined
+    let last = user ? Date.now() : 0
+    const check = () => {
+      last = Date.now()
+      void sdk.getUserInfo().catch((e: unknown) => {
+        if (!revoked(e)) return
+        sdk.clearTokens()
+        spend()
+        window.location.reload()
+      })
+    }
+    if (!user) check()
+    const seen = () => {
+      if (document.visibilityState === 'visible' && Date.now() - last >= REASK) check()
+    }
+    document.addEventListener('visibilitychange', seen)
+    return () => document.removeEventListener('visibilitychange', seen)
+  }, [isLoading, isAuthenticated, user, sdk])
 
   // Another tab chose another org: this one follows, rather than show one org and act as another.
   useEffect(() => {
@@ -144,7 +208,11 @@ function Bind({ children }: { children: ReactNode }) {
         remember()
         void go(LOGIN)
       },
-      signOut: () => void out(),
+      // The page a sign-out lands on asks hanzo.ai nothing for a minute (~/lib/silent).
+      signOut: () => {
+        spend()
+        void out()
+      },
     }
   }, [isLoading, isAuthenticated, accessToken, refused, user, picked, go, out])
 
