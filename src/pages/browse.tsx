@@ -12,7 +12,7 @@ import { unbuilt, unsigned, why } from '~/lib/http'
 import { apps, KINDS, mcpCatalog, shop, skills, type Kind, type Shop } from '~/lib/market'
 import { useRead, useRun } from '~/lib/read'
 import { useSession } from '~/session'
-import { Act, Column, Eyebrow, Failed, Nothing, Refusal } from '~/ui'
+import { Act, Column, Eyebrow, Failed, Go, Nothing, Panel, Refusal } from '~/ui'
 
 /** Cards drawn per page, and asked of a server at a time. */
 export const PAGE = 48
@@ -181,6 +181,26 @@ export function Browse({ kind }: { kind?: Kind }) {
           </XStack>
         ) : null}
         <Refusal says={reading.failed} />
+        <YStack pt="$4" data-continuity="ecosystem">
+          <Panel>
+            <XStack items="center" justify="space-between" flexWrap="wrap" gap="$3">
+              <YStack gap="$1" flex={1} minW={240}>
+                <Text fontSize="$3" fontWeight="600" color="$ink">
+                  From CLI to L3–L9 Certified Sensei &amp; Escrowed Work
+                </Text>
+                <Text fontSize="$2" color="$soft">
+                  Install the CLI at hanzo.sh, earn free L1–L3 credentials at Hanzo University, and unlock verified human Sensei work on Sensei Group.
+                </Text>
+              </YStack>
+              <XStack gap="$2" flexWrap="wrap">
+                <Go to="https://hanzo.ai/university">Hanzo University (L1–L9)</Go>
+                <Go to="https://sensei.group">Sensei Group (L3+)</Go>
+                <Go to="https://hanzo.sh">Install CLI</Go>
+                <Go to="https://hanzo.ai/bounty">Open Bounties</Go>
+              </XStack>
+            </XStack>
+          </Panel>
+        </YStack>
       </Column>
     </YStack>
   )
