@@ -9,9 +9,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { App } from '~/app'
+// Registers the read-only catalog tools where the browser offers WebMCP.
+import '~/webmcp'
 
-// The ambient gui telemetry client, off: it would build itself on first render
-// and, with no ingest key here, report a refusal on every visit.
+// The ambient gui telemetry client, off: our one stream is src/analytics.tsx,
+// and this one would send every page view a second time with no ingest key.
 ;(globalThis as Record<string, unknown>)['__HANZO_TELEMETRY__'] = { enabled: false }
 
 createRoot(document.getElementById('root')!).render(

@@ -5,13 +5,21 @@
 import { HanzoFooter, HanzoHeader, type HanzoLink, type HanzoNav, type HanzoSurface } from '@hanzogui/shell'
 import { useLocation } from 'react-router'
 
+import { Menu } from '~/menu'
 import { useSession } from '~/session'
 
+/** The shell's bar is 60 tall (@hanzogui/shell HEADER_H); a page that fills the screen below it says so with this. */
+export const BAR = 60
+
 const NAV: HanzoNav[] = [
-  { id: 'agents', label: 'Agents', href: '/agents', glyph: 'bot', hint: 'Hire an agent for a job' },
+  { id: 'agents', label: 'Agents', href: '/agents', glyph: 'bot', hint: 'Hire or run an agent' },
+  { id: 'experts', label: 'Experts', href: '/experts', glyph: 'users', hint: 'Book a person for a job' },
+  { id: 'personas', label: 'Personas', href: '/personas', glyph: 'user', hint: '1,042 open-source personas' },
   { id: 'apps', label: 'Apps', href: '/apps', glyph: 'blocks', hint: 'Apps built on Hanzo' },
   { id: 'skills', label: 'Skills', href: '/skills', glyph: 'spark', hint: 'Skills an agent can load' },
-  { id: 'mcp', label: 'MCP servers', href: '/mcp', glyph: 'plug', hint: 'Tools over MCP' },
+  { id: 'mcp', label: 'MCP servers', href: '/mcp', glyph: 'plug', hint: 'MCP servers and connectors' },
+  { id: 'tools', label: 'Tools', href: '/tools', glyph: 'terminal', hint: 'Platform tools over x402' },
+  { id: 'templates', label: 'Templates', href: '/templates', glyph: 'layers', hint: 'Open-source starter templates' },
   {
     id: 'sell',
     label: 'Sell',
@@ -26,7 +34,8 @@ const NAV: HanzoNav[] = [
   },
 ]
 
-const SELL: HanzoLink = { id: 'start-selling', label: 'Start selling', href: '/sell' }
+/** The one filled control, as on every Hanzo site: sign in first, then on to pay. */
+const TRY: HanzoLink = { id: 'try-hanzo', label: 'Try Hanzo', href: '/login' }
 
 export const SURFACE: HanzoSurface = {
   id: 'market',
@@ -34,25 +43,16 @@ export const SURFACE: HanzoSurface = {
   productId: 'market',
   brandName: 'Hanzo Market',
   localNav: NAV,
-  primaryCTA: SELL,
-  preFooter: { heading: 'Sell what you build', actions: [SELL] },
+  primaryCTA: TRY,
+  preFooter: { heading: 'Sell what you build', actions: [TRY] },
 }
 
 export function Header() {
   const session = useSession()
   const where = useLocation()
-  const auth = session.loading
-    ? undefined
-    : {
-        user: session.signedIn ? { name: session.name || 'Signed in', email: session.email ?? undefined } : null,
-        onSignIn: session.signIn,
-        onSignOut: session.signOut,
-        items: [
-          { id: 'my-jobs', label: 'Your jobs', href: '/jobs' },
-          { id: 'my-listings', label: 'Your listings', href: '/sell/listings' },
-        ],
-      }
-  return <HanzoHeader surface={SURFACE} auth={auth} currentHref={where.pathname + where.search} primaryLast />
+  // Signed out, the bar's one action; signed in, the person's menu, which carries the accounts.
+  const auth = session.loading || session.signedIn ? undefined : { user: null, onSignIn: session.signIn }
+  return <HanzoHeader surface={SURFACE} auth={auth} identitySlot={session.signedIn ? <Menu /> : undefined} currentHref={where.pathname + where.search} primaryLast />
 }
 
 export function Footer() {

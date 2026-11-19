@@ -47,9 +47,9 @@ export function cents(n: number): string {
   return usd((n / 100).toFixed(2))
 }
 
-/** How a listing's price reads: a tool is paid per call; everything else is hired per job. */
+/** How a listing's price reads: a tool is paid per call; a capability per fire; everything else is hired per job. */
 export function each(amount: string, kind: Kind): string {
-  return `${usd(amount)} per ${kind === 'tool' ? 'call' : 'job'}`
+  return `${usd(amount)} per ${kind === 'tool' ? 'call' : kind === 'capability' ? 'fire' : 'job'}`
 }
 
 /** A positive amount to the cent as "250.00" — what a job and a clearance take — or null. */

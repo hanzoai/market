@@ -2,7 +2,9 @@
 // api.hanzo.ai (`/v1/…`, `/.well-known/agent-skills/…`) and to hanzo.id is
 // answered here from a small stateful world, so a flow's writes are visible to
 // its later reads. Anything the world does not know answers 404 problem+json —
-// exactly what the live gateway says for an operation it does not serve.
+// exactly what the live gateway says for an operation it does not serve. The
+// pages of hanzo.ai the storefront leaves for (its sign-in and sign-up) are
+// stood in for too, so a run never reaches the real ones.
 //
 // The shapes are cloud's (hanzo-inc/cloud 039a518e9). A hire is its two steps: a
 // 402 with x402 terms, then the payment, whose signature is checked against the
@@ -62,6 +64,32 @@ export function wallet(w: World, id = 'wal_acme', name = 'Treasury', chain = 'ei
   const made = { id, accountId: 'acct_1', name, custody: 'mpc', chain, address: key.address }
   w.wallets.push(made)
   return made
+}
+
+/** A person in the shop: kind expert, hired through the same job as an agent. `profile` is what the listing's `expert` block carries. */
+export function expert(id: string, over: Row = {}, profile: Row = {}): Row {
+  return {
+    id,
+    publisherOrg: 'orbital',
+    kind: 'expert',
+    tool: '',
+    title: 'Ada Lovelace',
+    description: 'Builds on Base and ships it to Cloud.',
+    category: '',
+    price: '0',
+    currency: 'USD',
+    public: true,
+    createdAt: NOW - 86_400,
+    updatedAt: NOW - 86_400,
+    seller: { org: 'orbital', documented: true, reputation },
+    reputation,
+    links: {
+      cli: `hanzo marketplace jobs create --listing ${id} --brief <brief> --amount <usd>`,
+      mcp: { tool: 'marketplace', op: 'post_marketplace_jobs' },
+    },
+    expert: { rate: '150', areas: ['base', 'cloud'], languages: ['en', 'es'], timezone: 'America/Los_Angeles', availability: 'Weekdays 9-17 PT', verified: true, ...profile },
+    ...over,
+  }
 }
 
 /** The seller's payout address the x402 terms name. */
@@ -473,6 +501,59 @@ function ask(route: Route, q: Row) {
   return problem(route, 402, `sign the payment for job:${String(q.id)}`, { paymentRequired: Buffer.from(JSON.stringify(t)).toString('base64'), ...t })
 }
 
+/** What cloud refuses of an expert's profile (apps/marketplace): the rules the form has to respect. */
+function refuseExpert(route: Route, body: Row): Promise<void> | null {
+  const e = (body.expert ?? {}) as Row
+  if ('tool' in body) return problem(route, 422, 'tool is derived for an expert')
+  const title = typeof body.title === 'string' ? body.title.trim() : ''
+  if (!title || title.length > 200) return problem(route, 422, 'title is 1 to 200 characters')
+  if (!Array.isArray(e.areas) || !e.areas.length) return problem(route, 422, 'expert.areas needs at least one area')
+  if (!Array.isArray(e.languages) || e.languages.length < 1 || e.languages.length > 8) return problem(route, 422, 'expert.languages is 1 to 8 codes')
+  if (!e.timezone) return problem(route, 422, 'expert.timezone is required')
+  if (!(Number(body.price) > 0) && !(Number(e.rate) > 0)) return problem(route, 422, 'name a price or a rate')
+  if (!body.recipient) return problem(route, 422, 'a payout wallet is required for a paid listing')
+  return null
+}
+
+/**
+ * An org's listing as cloud answers the caller: an expert row carries `expert.self`
+ * when the caller is that expert and omits it otherwise. `owner` is this mock's own
+ * bookkeeping of whose a row is, and is never sent.
+ */
+function seen(w: World, row: Row): Row {
+  const { owner, ...rest } = row
+  if (rest.kind !== 'expert') return rest
+  return { ...rest, expert: { ...(rest.expert as Row), ...(owner === w.sub ? { self: true } : {}) } }
+}
+
+/** The shop's row for an expert listing: the public shape, which never says whose it is, and `verified` the staff's. */
+function shopped(w: World, mine: Row): Row {
+  return expert(String(mine.id), { publisherOrg: w.org, title: mine.title, description: mine.description, price: mine.price, seller: { org: w.org, documented: true, reputation: none }, reputation: none }, mine.expert as Row)
+}
+
+async function publishExpert(route: Route, w: World, body: Row) {
+  const refused = refuseExpert(route, body)
+  if (refused) return refused
+  // One expert listing per person (cloud: 409); a colleague's in the same org does not count.
+  if (w.listings.some((l) => l.kind === 'expert' && l.owner === w.sub)) return problem(route, 409, 'You already have an expert listing.')
+  const mine = { id: `lst_${w.listings.length + 1}`, publisherOrg: w.org, tool: '', ref: '', category: '', currency: 'USD', createdAt: NOW, updatedAt: NOW, ...body, owner: w.sub, expert: { ...(body.expert as Row), verified: false } }
+  w.listings.unshift(mine)
+  w.shop.unshift(shopped(w, mine))
+  return json(route, 201, seen(w, mine))
+}
+
+function changeExpert(route: Route, w: World, mine: Row, body: Row) {
+  const refused = refuseExpert(route, body)
+  if (refused) return refused
+  if (mine.owner !== w.sub) return problem(route, 403, 'only the expert may change their listing')
+  const before = mine.expert as Row
+  // The profile is replaced whole; `verified` is not the caller's to set.
+  Object.assign(mine, body, { expert: { ...(body.expert as Row), verified: before.verified }, updatedAt: NOW + 60 })
+  const at = w.shop.findIndex((l) => l.id === mine.id)
+  if (at >= 0) w.shop[at] = shopped(w, mine)
+  return json(route, 200, seen(w, mine))
+}
+
 async function api(route: Route, w: World) {
   const req = route.request()
   const url = new URL(req.url())
@@ -485,7 +566,8 @@ async function api(route: Route, w: World) {
   if (method === 'GET' && path === '/v1/marketplace/shop') {
     const all = hits(url, w.shop)
     const kind = url.searchParams.get('kind')
-    const hit = all.filter((l) => !kind || l.kind === kind)
+    const area = url.searchParams.get('area')
+    const hit = all.filter((l) => (!kind || l.kind === kind) && (!area || ((l.expert as Row | undefined)?.areas as string[] | undefined)?.includes(area)))
     const facets: Record<string, number> = {}
     for (const l of all) facets[String(l.kind)] = (facets[String(l.kind)] ?? 0) + 1
     return json(route, 200, { listings: paged(url, hit), total: hit.length, facets: { kind: facets, category: {}, price: {}, rating: {} } })
@@ -608,7 +690,16 @@ async function api(route: Route, w: World) {
   if (method === 'GET' && path === '/v1/tool/mcp/servers') return json(route, 200, { servers: [] })
 
   // ── listings ──
-  if (method === 'GET' && path === '/v1/marketplace/listings') return json(route, 200, { listings: w.listings })
+  if (method === 'GET' && path === '/v1/marketplace/listings') return json(route, 200, { listings: w.listings.map((l) => seen(w, l)) })
+  if (method === 'POST' && path === '/v1/marketplace/listings' && body.kind === 'expert') return publishExpert(route, w, body)
+  const patching = path.match(/^\/v1\/marketplace\/listings\/([^/]+)$/)
+  if (method === 'PATCH' && patching) {
+    const mine = w.listings.find((l) => l.id === patching[1])
+    if (!mine) return absent(route, path)
+    if (mine.kind === 'expert') return changeExpert(route, w, mine, body)
+    Object.assign(mine, body)
+    return json(route, 200, mine)
+  }
   if (method === 'POST' && path === '/v1/marketplace/listings') {
     const made = { id: `lst_${w.listings.length + 1}`, publisherOrg: w.org, currency: 'USD', createdAt: NOW, updatedAt: NOW, recipient: '', description: '', category: '', ref: 'ag_1', ...body }
     w.listings.unshift(made)
@@ -657,7 +748,7 @@ async function api(route: Route, w: World) {
   return absent(route, path)
 }
 
-async function iam(route: Route, w: World, base: string) {
+async function iam(route: Route, w: World) {
   const req = route.request()
   const url = new URL(req.url())
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' }
@@ -677,12 +768,7 @@ async function iam(route: Route, w: World, base: string) {
       },
       cors,
     )
-  if (url.pathname === '/v1/iam/oauth/authorize') {
-    const back = new URL(url.searchParams.get('redirect_uri') ?? `${base}/auth/callback`)
-    back.searchParams.set('code', 'test-code')
-    back.searchParams.set('state', url.searchParams.get('state') ?? '')
-    return route.fulfill({ status: 302, headers: { location: back.toString() } })
-  }
+  if (url.pathname === '/v1/iam/oauth/revoke' || url.pathname === '/v1/iam/oauth/logout') return json(route, 200, { status: 'ok' }, cors)
   if (url.pathname === '/v1/iam/oauth/token')
     return json(
       route,
@@ -695,10 +781,38 @@ async function iam(route: Route, w: World, base: string) {
   return route.fulfill({ status: 404, headers: cors })
 }
 
-/** Serve the platform and the issuer from `w` for this page. */
+/** hanzo.ai's pages the storefront leaves for: its sign-in and sign-up. */
+export const HANZO_AI = /^https:\/\/hanzo\.ai\/(login|signup)(\?|$)/
+
+/** hanzo.id's end-session, which a sign-out on the published host leaves for. */
+export const END_SESSION = /^https:\/\/hanzo\.id\/v1\/iam\/oauth\/logout(\?|$)/
+
+/**
+ * hanzo.ai, as the storefront meets it. This browser holds a session there, so a
+ * sign-in that asks nothing of it is answered at once, as hanzo.ai answers a
+ * Hanzo site's own request: back to that request's callback with a code and its
+ * state, which the storefront then exchanges with hanzo.id. A request that asks
+ * the person (`prompt`: Switch account, Add account) is hanzo.ai's account
+ * chooser, a page that stays put here.
+ */
+function hanzoAi(route: Route) {
+  const url = new URL(route.request().url())
+  if (url.searchParams.get('prompt')) return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><h1>Choose an account</h1>' })
+  const callback = url.searchParams.get('redirect_uri')
+  if (!callback) return route.fulfill({ status: 400, contentType: 'text/html', body: '<!doctype html><h1>The request names no callback</h1>' })
+  const back = new URL(callback)
+  back.searchParams.set('code', 'test-code')
+  back.searchParams.set('state', url.searchParams.get('state') ?? '')
+  return route.fulfill({ status: 302, headers: { location: back.toString() } })
+}
+
+/** Serve the platform, the issuer and hanzo.ai's sign-in from `w` for this page. */
 export async function mock(page: Page, w: World) {
-  const base = new URL(page.url() === 'about:blank' ? 'http://127.0.0.1' : page.url()).origin
-  await page.route(/\/v1\//, (route) => (new URL(route.request().url()).hostname === 'hanzo.id' ? iam(route, w, base) : api(route, w)))
+  await page.route(/\/v1\//, (route) => {
+    const u = new URL(route.request().url())
+    return u.hostname === 'hanzo.id' || u.pathname.startsWith('/v1/iam/') ? iam(route, w) : api(route, w)
+  })
   await page.route(/\/\.well-known\/agent-skills\//, (route) => api(route, w))
-  await page.route(/^https:\/\/hanzo\.id\//, (route) => iam(route, w, base))
+  await page.route(/^https:\/\/hanzo\.id\//, (route) => iam(route, w))
+  await page.route(HANZO_AI, hanzoAi)
 }

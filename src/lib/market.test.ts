@@ -37,6 +37,7 @@ const last = () => {
 describe('market contract', () => {
   it.each([
     [() => m.shop({ q: 'x', kind: 'agent', limit: 5 }), 'GET /v1/marketplace/shop?q=x&kind=agent&limit=5'],
+    [() => m.shop({ kind: 'expert', area: 'base', q: 'ada', limit: 200, offset: 200 }), 'GET /v1/marketplace/shop?kind=expert&area=base&q=ada&limit=200&offset=200'],
     [() => m.shopListing('lst 1'), 'GET /v1/marketplace/shop/lst%201'],
     [() => m.ownListings(), 'GET /v1/marketplace/listings'],
     [() => m.publish({ tool: 't', title: 'T', kind: 'skill' }), 'POST /v1/marketplace/listings'],

@@ -28,24 +28,9 @@ const proxy = {
  */
 const PORT = 3330
 
-/**
- * The sites plane serves `index.html` for any page-shaped path (spaMode), and a
- * static host without that answers the site's `404.html`. Writing the document
- * under both names makes every deep link land on the app either way.
- */
-const spaFallback = {
-  name: 'spa-fallback',
-  async writeBundle(options: { dir?: string }) {
-    const { copyFile } = await import('node:fs/promises')
-    const { join } = await import('node:path')
-    const dir = options.dir ?? 'dist'
-    await copyFile(join(dir, 'index.html'), join(dir, '404.html'))
-  },
-}
-
 const config = hanzo(
   {
-    plugins: [react(), spaFallback],
+    plugins: [react()],
     server: { port: PORT, allowedHosts: true, proxy },
     preview: { port: PORT, allowedHosts: true, proxy },
   },

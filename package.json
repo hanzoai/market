@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "hanzo.market — the Hanzo marketplace for agents, apps, skills and MCP servers. A static storefront over api.hanzo.ai.",
+  "description": "hanzo.market \u2014 the Hanzo marketplace for agents, apps, skills and MCP servers. A static storefront over api.hanzo.ai.",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && bun scripts/pages.ts",
     "coverage": "vitest run --coverage",
     "dev": "vite",
     "format": "oxfmt --write",
-    "lint": "oxlint --type-aware --tsconfig ./tsconfig.json ./src ./e2e && hanzo-design-lint src",
+    "lint": "oxlint --type-aware --tsconfig ./tsconfig.json ./src ./e2e ./scripts && hanzo-design-lint src",
     "preinstall": "bunx only-allow bun",
     "preview": "vite preview",
     "test": "vitest run",
@@ -18,11 +18,13 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@hanzo/app": "0.3.53",
+    "@hanzo/event": "0.3.66",
     "@hanzo/font": "1.9.3",
     "@hanzo/gui": "8.3.5",
-    "@hanzo/iam": "0.21.19",
-    "@hanzo/ui": "8.27.16",
-    "@hanzogui/shell": "8.3.17",
+    "@hanzo/iam": "0.21.42",
+    "@hanzo/ui": "8.33.4",
+    "@hanzogui/shell": "^8.3.21",
     "lucide-react": "^1.42.0",
     "next-themes": "^0.4.6",
     "react": "19.2.8",
@@ -53,6 +55,7 @@
     "vitest": "5.0.1"
   },
   "overrides": {
+    "@hanzo/event": "0.3.66",
     "@hanzo/gui": "8.3.5",
     "@hanzogui/animations-css": "8.3.5",
     "@hanzogui/config": "8.3.5",

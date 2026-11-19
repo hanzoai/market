@@ -7,8 +7,11 @@
 // order people shop them — and its counts are the servers' totals, never the
 // number of cards loaded so far.
 
+import { fees, profile, type Profile } from '~/lib/expert'
 import { KINDS, type AppEntry, type Kind, type McpListing, type ShopListing, type SkillEntry } from '~/lib/market'
 import { each, free } from '~/lib/money'
+import { personaSummary, type PersonaEntry } from '~/lib/personas'
+import type { TemplateEntry } from '~/lib/templates'
 
 export interface Item {
   /** Unique across sources. */
@@ -22,25 +25,33 @@ export interface Item {
   by: string
   /** A price line, or null when free. */
   price: string | null
+  /** What an expert's card and page say, when the item is a person. */
+  expert?: Profile
 }
 
 export const LABEL: Record<Kind, { one: string; many: string }> = {
   agent: { one: 'Agent', many: 'Agents' },
+  expert: { one: 'Expert', many: 'Experts' },
   persona: { one: 'Persona', many: 'Personas' },
+  capability: { one: 'Kai Capability', many: 'Kai Capabilities' },
   app: { one: 'App', many: 'Apps' },
   skill: { one: 'Skill', many: 'Skills' },
   mcp: { one: 'MCP server', many: 'MCP servers' },
   tool: { one: 'Tool', many: 'Tools' },
+  template: { one: 'Template', many: 'Templates' },
 }
 
 /** Where each type is browsed. */
 export const PATH: Record<Kind, string> = {
   agent: '/agents',
+  expert: '/experts',
   persona: '/personas',
+  capability: '/capabilities',
   app: '/apps',
   skill: '/skills',
   mcp: '/mcp',
   tool: '/tools',
+  template: '/templates',
 }
 
 export function isKind(v: unknown): v is Kind {
@@ -51,6 +62,19 @@ export function isKind(v: unknown): v is Kind {
 export const sellerName = (org: string) => (org === 'admin' ? 'Hanzo' : org)
 
 export function fromListing(l: ShopListing): Item {
+  const expert = profile(l)
+  if (expert) {
+    return {
+      key: `listing:${l.id}`,
+      kind: l.kind,
+      href: `${PATH.expert}/${encodeURIComponent(l.id)}`,
+      title: l.title,
+      summary: l.description,
+      by: sellerName(l.seller.org),
+      price: fees(expert).join(' · ') || null,
+      expert,
+    }
+  }
   return {
     key: `listing:${l.id}`,
     kind: l.kind,
@@ -98,6 +122,30 @@ export function fromMcp(m: McpListing): Item {
   }
 }
 
+export function fromTemplate(t: TemplateEntry): Item {
+  return {
+    key: `template:${t.slug}`,
+    kind: 'template',
+    href: `/templates/${encodeURIComponent(t.slug)}`,
+    title: t.title,
+    summary: t.description,
+    by: 'Hanzo OSS',
+    price: null,
+  }
+}
+
+export function fromPersona(p: PersonaEntry): Item {
+  return {
+    key: `persona:${p.slug}`,
+    kind: 'persona',
+    href: `/personas/${encodeURIComponent(p.slug)}`,
+    title: p.called ? `${p.name} (${p.called})` : p.name,
+    summary: personaSummary(p),
+    by: 'Hanzo OSS',
+    price: null,
+  }
+}
+
 /** Case-insensitive match of every word in `q` against title, summary and seller. */
 export function matches(item: Item, q: string): boolean {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean)
@@ -106,7 +154,7 @@ export function matches(item: Item, q: string): boolean {
   return words.every((w) => hay.includes(w))
 }
 
-export type Source = 'listings' | 'apps' | 'mcp' | 'skills'
+export type Source = 'listings' | 'personas' | 'apps' | 'mcp' | 'skills' | 'templates'
 
 /** One source, as far as it has been read. */
 export interface Shelf {
@@ -119,8 +167,8 @@ export interface Shelf {
   total: number
 }
 
-/** The order shelves stand in: what sellers publish, then what people hire and run, then the skills directory. */
-const ORDER: Source[] = ['listings', 'apps', 'mcp', 'skills']
+/** The order shelves stand in: what sellers publish, then personas, apps, MCP servers, skills and OSS templates. */
+const ORDER: Source[] = ['listings', 'personas', 'apps', 'mcp', 'skills', 'templates']
 
 /** The shelves a view shows, in order: every shelf for all types, else the listings and that type's directory. */
 export function shown(shelves: Shelf[], type: Kind | ''): Shelf[] {

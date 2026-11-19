@@ -13,10 +13,10 @@ import { held, inflight } from '~/lib/job'
 import { dollars } from '~/lib/money'
 import { digest, nonce, payment, rail, terms, vet, type Authorization } from '~/lib/x402'
 
-/** What a listing sells. A tool is the platform's, sold per call; everything else is hired for a job. */
-export type Kind = 'agent' | 'persona' | 'app' | 'skill' | 'mcp' | 'tool'
+/** What a listing sells. A tool is the platform's, sold per call; an expert is a person; a capability is a Kai capability head over the shared latent representation; everything else is hired for a job. */
+export type Kind = 'agent' | 'expert' | 'persona' | 'capability' | 'app' | 'skill' | 'mcp' | 'tool' | 'template'
 /** In the order the shop facets them. */
-export const KINDS: readonly Kind[] = ['agent', 'persona', 'app', 'skill', 'mcp', 'tool']
+export const KINDS: readonly Kind[] = ['agent', 'expert', 'persona', 'capability', 'app', 'skill', 'mcp', 'tool', 'template']
 
 // ── /v1/marketplace: the shop and an org's listings ─────────────────────────
 
@@ -26,6 +26,81 @@ export interface Reputation {
   reviews: number
   installs: number
   jobs: { completed: number; disputed: number }
+}
+
+/** What an expert writes about themself: `rate` is an hourly USD decimal, "0" when none. */
+export interface ExpertProfile {
+  rate: string
+  /** Slugs from the closed list in `~/lib/expert`. */
+  areas: string[]
+  /** Lowercase BCP 47 codes. */
+  languages: string[]
+  /** An IANA time zone id. */
+  timezone: string
+  availability: string
+  /** What they know, as they name it. */
+  skills?: string[]
+  /** Https addresses: their profile, their site, what they shipped. */
+  links?: string[]
+}
+
+/** One badge a member holds, as anyone may see it; `rarity` is the program's word. */
+export interface Badge {
+  id: string
+  name: string
+  pillar: string
+  rarity: string
+}
+
+/** A member's public standing in the rewards program: only for one who turned it on, and only what that profile shows. */
+export interface Standing {
+  level: number
+  levelName: string
+  points: number
+  /** The highest token milestone held, never a count; absent when none is. */
+  tier?: { id: string; label: string }
+  /** The rarest three. */
+  badges: Badge[]
+  /** Awarded claims by pillar: use, share, community, contribute, expert. */
+  pillars: Record<string, number>
+}
+
+/** How much a person has used and built with one product, and what the score is made of. Only recorded data is counted. */
+export interface Mastery {
+  product: string
+  score: number
+  parts: Partial<Record<'usage' | 'badges' | 'contributions' | 'jobs', number>>
+}
+
+/** An expert as the shop shows them; `verified` is the platform staff's word, never the expert's. */
+export interface Expert extends ExpertProfile {
+  verified: boolean
+  /** Present only when the expert's rewards profile is public. */
+  reward?: Standing
+  /** Their strongest products, by score. */
+  products?: Mastery[]
+  /** The products they rank in the top three for. */
+  top?: string[]
+}
+
+/** Verified Kai capability metadata attached to a capability listing. */
+export interface CapabilitySpec {
+  sha256: string
+  baseSha256: string
+  representation: string
+  form: string
+  rank: number
+  bytes: number
+  questionKey: string
+  questionType: string
+  labels: string[]
+  repairs: number
+  damage: number
+  fireRate: number
+  specificity: number
+  oodMoved: number
+  latencyUs: number
+  license: string
 }
 
 /** One of the caller org's own listings. */
@@ -40,13 +115,16 @@ export interface Listing {
   title: string
   description: string
   category: string
-  /** Per call for a tool, per job otherwise; "0" is free. */
+  /** Per call for a tool, per fire for a capability, per job otherwise; "0" is free. */
   price: string
   currency: string
   /** Payout wallet id in publisherOrg. */
   recipient: string
   public: boolean
   docs?: string
+  /** Only on kind expert; `self` is the platform's word that the caller is that expert, omitted when they are not. */
+  expert?: Expert & { self?: boolean }
+  capability?: CapabilitySpec
   createdAt: number
   updatedAt: number
 }
@@ -64,6 +142,9 @@ export interface ShopListing {
   currency: string
   public: boolean
   docs?: string
+  /** Only on kind expert. */
+  expert?: Expert
+  capability?: CapabilitySpec
   createdAt: number
   updatedAt: number
   /** What anyone may know about the seller: documented is a certified, valid tax form. */
@@ -92,23 +173,68 @@ export interface PublishReq {
   recipient?: string
   public?: boolean
   docs?: string
+  capability?: { license?: string }
 }
 
-export type ListingPatch = Partial<Omit<PublishReq, 'tool' | 'kind'>>
+/** An expert's listing: no `tool`, which the platform derives. Any signed-in member may publish one. */
+export interface ExpertReq {
+  kind: 'expert'
+  title: string
+  description: string
+  /** A fixed engagement price in USD, "0" when none. */
+  price: string
+  /** Payout wallet id in the caller's org; required for any positive price or rate. */
+  recipient: string
+  public: true
+  expert: ExpertProfile
+}
+
+export type ListingPatch = Partial<Omit<PublishReq, 'tool' | 'kind'>> & { expert?: ExpertProfile }
+
+/** What the shop may be asked; everything after `offset` narrows or orders experts only. */
+export interface ShopQuery {
+  q?: string
+  kind?: Kind | ''
+  area?: string
+  limit?: number
+  offset?: number
+  sort?: string
+  dir?: 'asc' | 'desc'
+  language?: string
+  verified?: boolean
+  minLevel?: number
+  badge?: string
+  tokenTier?: string
+  rateMin?: string
+  rateMax?: string
+  product?: string
+}
 
 /** GET /v1/marketplace/shop — every public listing, any org, no sign-in. 48 a page by default, 200 at most. */
-export const shop = (q: { q?: string; kind?: Kind | ''; limit?: number; offset?: number }) =>
-  request<Shop>({ path: '/v1/marketplace/shop', query: q, anonymous: true })
+export const shop = (q: ShopQuery) => request<Shop>({ path: '/v1/marketplace/shop', query: { ...q, verified: q.verified || undefined }, anonymous: true })
 
 /** GET /v1/marketplace/shop/{id}. */
 export const shopListing = (id: string) =>
   request<ShopListing>({ path: `/v1/marketplace/shop/${encodeURIComponent(id)}`, anonymous: true })
 
+/** GET /v1/marketplace/shop/{id}/weights — downloadable .tar weights (base64) for open-source capabilities. */
+export const capabilityWeights = (id: string) =>
+  request<{ name: string; version: number; sha256: string; base_sha256: string; representation: string; form: string; bytes: number; tar: string }>({
+    path: `/v1/marketplace/shop/${encodeURIComponent(id)}/weights`,
+    anonymous: true,
+  })
+
+/** GET /v1/capabilities — the caller org's own Kai capabilities. */
+export const ownCapabilities = () =>
+  request<{ data: { name: string; state: string; version: number; installed: number; question?: { key: string; type: string; labels: string[] } }[] }>({
+    path: '/v1/capabilities',
+  })
+
 /** GET /v1/marketplace/listings — the caller org's own listings. */
 export const ownListings = () => request<{ listings: Listing[] }>({ path: '/v1/marketplace/listings' })
 
-/** POST /v1/marketplace/listings → 201. An org admin publishes. */
-export const publish = (req: PublishReq) =>
+/** POST /v1/marketplace/listings → 201. An org admin publishes; any member may publish an expert. */
+export const publish = (req: PublishReq | ExpertReq) =>
   request<Listing>({ method: 'POST', path: '/v1/marketplace/listings', body: req })
 
 /** PATCH /v1/marketplace/listings/{id}. */
@@ -119,7 +245,7 @@ export const updateListing = (id: string, patch: ListingPatch) =>
 export const unpublish = (id: string) =>
   request<void>({ method: 'DELETE', path: `/v1/marketplace/listings/${encodeURIComponent(id)}` })
 
-/** POST /v1/marketplace/install — activates one tool for the caller's org and project. */
+/** POST /v1/marketplace/install — activates one tool or capability for the caller's org and project. */
 export const install = (tool: string) =>
   request<{ tool: string; installed: boolean }>({ method: 'POST', path: '/v1/marketplace/install', body: { tool } })
 
@@ -399,6 +525,8 @@ export interface AppEntry {
   stars?: number
   updated?: string
   license?: string
+  /** The repository a fork tracks, as owner/name. */
+  upstream?: string
 }
 
 export const apps = (q: { q?: string; org?: string; limit?: number; offset?: number }) =>

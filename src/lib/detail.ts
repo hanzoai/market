@@ -2,10 +2,13 @@
 // which carries everything the page shows: what it is, who offers it, its
 // reputation, how to get it, and how to reach it from docs, the CLI and MCP.
 
-import { web } from '~/lib/api'
-import { fromApp, fromListing, fromMcp, fromSkill, sellerName, type Item } from '~/lib/catalog'
-import type { AppEntry, McpListing, Reputation, ShopListing, SkillEntry } from '~/lib/market'
+import { GATEWAY, web } from '~/lib/api'
+import { fromApp, fromListing, fromMcp, fromPersona, fromSkill, fromTemplate, sellerName, type Item } from '~/lib/catalog'
+import { facts as expertFacts } from '~/lib/expert'
+import type { AppEntry, CapabilitySpec, McpListing, Reputation, ShopListing, SkillEntry } from '~/lib/market'
 import { free } from '~/lib/money'
+import { findPersona, personaSummary } from '~/lib/personas'
+import { TEMPLATES } from '~/lib/templates'
 
 export const DOCS = 'https://docs.hanzo.ai'
 
@@ -31,6 +34,8 @@ export interface Detail {
   cli: string | null
   /** The MCP tool call that does the same, as hanzo-mcp exposes it. */
   mcp: { tool: string; op: string; input: Record<string, string> } | null
+  /** Present when this listing is a Kai capability over the shared representation. */
+  capability?: CapabilitySpec
 }
 
 /** A listing's docs: an https URL, or a path on docs.hanzo.ai (cloud admits nothing else). */
@@ -40,24 +45,42 @@ export function docs(at: string | undefined): string | null {
 }
 
 export function listingDetail(l: ShopListing): Detail {
-  const tool = l.kind === 'tool'
-  const get: Get = tool && free(l.price) ? { how: 'install', tool: l.tool } : { how: 'checkout', listing: l.id, hire: !tool }
+  const installable = l.kind === 'tool' || l.kind === 'capability'
+  const get: Get = installable && free(l.price) ? { how: 'install', tool: l.tool } : { how: 'checkout', listing: l.id, hire: !installable }
+  const item = fromListing(l)
+  const cap = l.capability
+  const links: { label: string; href: string }[] = [{ label: 'Documentation', href: docs(l.links.docs ?? l.docs) ?? `${DOCS}/docs/api` }]
+  if (cap && free(l.price)) {
+    links.unshift({ label: 'Download .tar weights', href: `${GATEWAY}/v1/marketplace/shop/${encodeURIComponent(l.id)}/weights` })
+  }
   return {
-    item: fromListing(l),
+    item,
     body: l.description,
     facts: [
       ['Seller', sellerName(l.seller.org)],
       ['Tax form', l.seller.documented ? 'Certified' : 'Not on file'],
-      [tool ? 'Tool' : 'Sells', l.tool],
+      ...(item.expert
+        ? expertFacts(item.expert)
+        : ([[l.kind === 'tool' ? 'Tool' : l.kind === 'capability' ? 'Capability' : 'Sells', l.tool]] as [string, string][])),
       ...(l.category ? ([['Category', l.category]] as [string, string][]) : []),
+      ...(cap
+        ? ([
+            ['Representation', `${cap.representation.slice(0, 16)}…`],
+            ['Route', `${cap.questionKey} (${cap.questionType})`],
+            ['Verified eval', `+${cap.repairs} repairs / -${cap.damage} damage / OOD ${cap.oodMoved}`],
+            ['Latency', `+${cap.latencyUs} µs`],
+            ['License', cap.license],
+          ] as [string, string][])
+        : []),
       ['Listed', new Date(l.createdAt * 1000).toISOString().slice(0, 10)],
     ],
     reputation: l.reputation,
-    links: [{ label: 'Documentation', href: docs(l.links.docs ?? l.docs) ?? `${DOCS}/docs/api` }],
+    links,
     get,
     // The command and the MCP operation are the platform's own words for this listing.
     cli: l.links.cli,
-    mcp: { tool: l.links.mcp.tool, op: l.links.mcp.op, input: tool ? { tool: l.tool } : { listing: l.id, brief: '<brief>', amount: '<usd>' } },
+    mcp: { tool: l.links.mcp.tool, op: l.links.mcp.op, input: installable ? { tool: l.tool } : { listing: l.id, brief: '<brief>', amount: '<usd>' } },
+    capability: cap,
   }
 }
 
@@ -126,6 +149,55 @@ export function mcpDetail(m: McpListing): Detail {
     get: { how: 'connect', listing: m.id },
     cli: `hanzo tool mcp servers create --listing ${m.id}`,
     mcp: { tool: 'tool', op: 'post_tool_mcp_servers', input: { listing: m.id } },
+  }
+}
+
+export function templateDetail(slug: string): Detail {
+  const t = TEMPLATES.find((item) => item.slug === slug)
+  if (!t) throw new Error(`No template named ${slug}.`)
+  return {
+    item: fromTemplate(t),
+    body: t.description,
+    facts: [
+      ['Category', t.category],
+      ['Author', 'Hanzo OSS'],
+      ['License', 'MIT'],
+      ['Stack', 'Next.js / React / TypeScript / GUI'],
+    ],
+    reputation: null,
+    links: [
+      { label: 'Fork on GitHub', href: t.github ?? `https://github.com/hanzoai/universe/tree/main/templates/apps/${slug}` },
+      { label: 'Documentation', href: `${DOCS}/docs/apps/templates` },
+    ],
+    get: { how: 'open', href: t.github ?? `https://github.com/hanzoai/universe/tree/main/templates/apps/${slug}` },
+    cli: null,
+    mcp: null,
+  }
+}
+
+export function personaDetail(slug: string, doc = ''): Detail {
+  const p = findPersona(slug)
+  if (!p) throw new Error(`No persona named ${slug}.`)
+  const chatUrl = `https://hanzo.ai/chat?persona=${encodeURIComponent(slug)}`
+  const repoUrl = `https://github.com/hanzoai/personas/tree/main/personas/${encodeURIComponent(slug)}`
+  return {
+    item: fromPersona(p),
+    body: doc.trim() || personaSummary(p),
+    facts: [
+      ['Category', p.category],
+      ...(p.based ? ([['Based on', p.based]] as [string, string][]) : []),
+      ['Package', '@hanzo/personas'],
+      ['License', 'MIT / Apache-2.0'],
+    ],
+    reputation: null,
+    links: [
+      { label: 'Open in Hanzo Chat', href: chatUrl },
+      { label: 'Fork / Contribute on GitHub', href: repoUrl },
+      { label: 'Documentation', href: `${DOCS}/docs/agents` },
+    ],
+    get: { how: 'open', href: chatUrl },
+    cli: null,
+    mcp: null,
   }
 }
 

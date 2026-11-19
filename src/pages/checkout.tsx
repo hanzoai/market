@@ -11,6 +11,7 @@ import { useNavigate, useParams } from 'react-router'
 
 import { sellerName } from '~/lib/catalog'
 import { answers, asksWhere, facts, headline, net, netOnly, payable, todos, withholding } from '~/lib/clearance'
+import { fees, opening, profile } from '~/lib/expert'
 import { lost as unanswered, notServed } from '~/lib/http'
 import { inflight, words } from '~/lib/job'
 import { clearance, hire, install, shopListing, underway, wallets, type Attempt, type ClearIn, type Clearance, type Job, type ShopListing, type Wallet } from '~/lib/market'
@@ -124,7 +125,7 @@ function Hire({ listing }: { listing: ShopListing }) {
   // Attempts this page ended without a payment: their quotes can never open.
   const unpaid = useRef(new Set<string>())
   const [brief, setBrief] = useState('')
-  const [amount, setAmount] = useState(dollars(listing.price) ?? '')
+  const [amount, setAmount] = useState(opening(listing))
   const [days, setDays] = useState('7')
   const [where, setWhere] = useState('')
   const [wallet, setWallet] = useState('')
@@ -196,7 +197,9 @@ function Hire({ listing }: { listing: ShopListing }) {
       await send({ id: nonce(), req, from: { id: payer.id, address: payer.address, chain: payer.chain } })
     })
 
-  const title = { eyebrow: 'Hire', title: listing.title, says: `Sold by ${sellerName(listing.seller.org)} · ${free(listing.price) ? 'Price agreed per job' : each(listing.price, listing.kind)}` }
+  const asks = profile(listing)
+  const price = (asks && fees(asks).join(' · ')) || (free(listing.price) ? 'Price agreed per job' : each(listing.price, listing.kind))
+  const title = { eyebrow: asks ? 'Book' : 'Hire', title: listing.title, says: `Sold by ${sellerName(listing.seller.org)} · ${price}` }
 
   if (kept) {
     return (

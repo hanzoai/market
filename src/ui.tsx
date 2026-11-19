@@ -2,9 +2,9 @@
 // the same system hanzo.ai and the console wear. Monochrome: rank is carried by
 // luminance ($ink > $soft > $quiet), never by hue.
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Box, Text, XStack, YStack } from '@hanzo/ui'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy, Search } from 'lucide-react'
 import { Link } from 'react-router'
 
 import type { Read } from '~/lib/read'
@@ -167,6 +167,39 @@ export function Go({ to, children, loud }: { to: string; children: ReactNode; lo
   )
 }
 
+/** The search box: it holds what is typed and hands over the words when they are submitted. */
+export function Find({ q, label, hint, onSearch }: { q: string; label: string; hint: string; onSearch: (q: string) => void }) {
+  const [draft, setDraft] = useState(q)
+  useEffect(() => setDraft(q), [q])
+  return (
+    <form
+      role="search"
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSearch(draft.trim())
+      }}
+      style={{ width: '100%', maxWidth: 640 }}
+    >
+      <XStack gap="$2" items="center" px="$4" py="$2" rounded="$10" borderWidth={1} borderColor="$borderColor">
+        <Search size={16} aria-hidden />
+        <input
+          type="search"
+          aria-label={label}
+          placeholder={hint}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          style={{ flex: 1, background: 'transparent', border: 0, outline: 'none', color: 'inherit', font: 'inherit', fontSize: 'var(--text-base)', minWidth: 0 }}
+        />
+        <button type="submit" style={{ background: 'transparent', border: 0, color: 'inherit', font: 'inherit', cursor: 'pointer' }}>
+          <Text fontSize="$2" color="$soft">
+            Search
+          </Text>
+        </button>
+      </XStack>
+    </form>
+  )
+}
+
 /** A form control's chrome: the design system's control edge, radius and type. */
 const control = {
   background: 'transparent',
@@ -205,6 +238,7 @@ export function Field({
   help,
   type = 'text',
   name,
+  enter,
 }: {
   label: string
   value: string
@@ -213,6 +247,8 @@ export function Field({
   help?: string
   type?: string
   name?: string
+  /** Called when Enter is pressed in the field, which then does not submit anything. */
+  enter?: () => void
 }) {
   return (
     <Labelled label={label} help={help}>
@@ -222,9 +258,53 @@ export function Field({
         value={value}
         placeholder={hint}
         onChange={(e) => set(e.target.value)}
+        onKeyDown={
+          enter
+            ? (e) => {
+                if (e.key !== 'Enter') return
+                e.preventDefault()
+                enter()
+              }
+            : undefined
+        }
         style={control}
       />
     </Labelled>
+  )
+}
+
+/** A small input that sits in a row of chips, named for assistive tech and not drawn with a label. */
+export function Entry({ label, value, set, enter, hint }: { label: string; value: string; set: (v: string) => void; enter?: () => void; hint?: string }) {
+  return (
+    <input
+      aria-label={label}
+      value={value}
+      placeholder={hint}
+      onChange={(e) => set(e.target.value)}
+      onKeyDown={
+        enter
+          ? (e) => {
+              if (e.key !== 'Enter') return
+              e.preventDefault()
+              enter()
+            }
+          : undefined
+      }
+      style={{ ...control, width: 'auto', flex: 1, minWidth: 140 }}
+    />
+  )
+}
+
+/** A small list that sits in a row of chips, named for assistive tech and not drawn with a label. */
+export function Add<T extends string>({ label, value, set, of }: { label: string; value: T; set: (v: T) => void; of: readonly { value: T; label: string }[] }) {
+  return (
+    <select aria-label={label} value={value} onChange={(e) => set(e.target.value as T)} style={{ ...control, width: 'auto', minWidth: 140 }}>
+      {of.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   )
 }
 

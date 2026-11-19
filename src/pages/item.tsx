@@ -7,53 +7,107 @@ import { Star } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router'
 
 import { LABEL } from '~/lib/catalog'
-import { appDetail, listingDetail, mcpCall, mcpDetail, skillDetail, type Detail } from '~/lib/detail'
+import { appDetail, listingDetail, mcpCall, mcpDetail, personaDetail, skillDetail, templateDetail, type Detail } from '~/lib/detail'
 import { api } from '~/lib/api'
+import { areaLabel, change, check, fees, FREELANCE, fill, language, mine, refresh, type Change, type Profile } from '~/lib/expert'
+import { pull } from '~/lib/github'
 import { needsSession, notServed } from '~/lib/http'
-import { apps, connectMcp, install, mcpListing, shopListing, skillDoc, skills, type Reputation } from '~/lib/market'
+import { connect, github, GITHUB } from '~/lib/linked'
+import { apps, connectMcp, install, mcpListing, ownListings, shopListing, skillDoc, skills, updateListing, type Listing, type Reputation } from '~/lib/market'
+import { findDefaultListing, findDefaultMcp } from '~/lib/registry'
 import { useRead, useRun, type Read } from '~/lib/read'
+import { Chip, Verified } from '~/pages/experts'
+import { Record, Strengths } from '~/pages/standing'
 import { useSession } from '~/session'
 import { Act, Code, Column, Count, Eyebrow, Failed, Go, Mark, Nothing, Panel, Pending, Refusal, Section } from '~/ui'
 
+// One read per kind of item, shared by the pages and the WebMCP tools.
+
+export const loadListing = (id: string) =>
+  shopListing(id)
+    .catch((err) => {
+      const fallback = findDefaultListing(id)
+      if (fallback) return fallback
+      throw err
+    })
+    .then(listingDetail)
+
+export const loadApp = (org: string, name: string) =>
+  apps({ q: name, org, limit: 50 }).then((r) => {
+    const hit = r.data.find((e) => e.org === org && e.name === name)
+    if (!hit) throw new Error(`No app named ${org}/${name} in the catalog.`)
+    return appDetail(hit)
+  })
+
+export const loadSkill = (name: string) =>
+  Promise.all([skills(), skillDoc(name).catch(() => '')]).then(([index, doc]) => {
+    const hit = index.skills.find((s) => s.name === name)
+    if (!hit) throw new Error(`No skill named ${name}.`)
+    return skillDetail(hit, doc, api())
+  })
+
+export const loadTemplate = async (slug: string) => templateDetail(slug)
+
+/** A persona's definition is published beside its page, at /personas/<slug>/PERSONA.md, for the 67 that have one. */
+export const loadPersona = (slug: string) =>
+  fetch(`/personas/${encodeURIComponent(slug)}/PERSONA.md`)
+    .then((r) => (r.ok ? r.text() : ''))
+    .catch(() => '')
+    .then((doc) => personaDetail(slug, doc))
+
+export const loadMcp = (id: string) =>
+  mcpListing(id)
+    .catch((err) => {
+      const fallback = findDefaultMcp(id)
+      if (fallback) return fallback
+      throw err
+    })
+    .then(mcpDetail)
+
 export function ListingPage() {
   const { id = '' } = useParams()
-  const read = useRead(() => shopListing(id).then(listingDetail), [id])
+  const read = useRead(() => loadListing(id), [id])
   return <View read={read} />
 }
 
 export function AppPage() {
   const { org = '', name = '' } = useParams()
-  const read = useRead(
-    () =>
-      apps({ q: name, org, limit: 50 }).then((r) => {
-        const hit = r.data.find((e) => e.org === org && e.name === name)
-        if (!hit) throw new Error(`No app named ${org}/${name} in the catalog.`)
-        return appDetail(hit)
-      }),
-    [org, name],
-  )
+  const read = useRead(() => loadApp(org, name), [org, name])
   return <View read={read} />
 }
 
 export function SkillPage() {
   const { name = '' } = useParams()
-  const read = useRead(
-    () =>
-      Promise.all([skills(), skillDoc(name).catch(() => '')]).then(([index, doc]) => {
-        const hit = index.skills.find((s) => s.name === name)
-        if (!hit) throw new Error(`No skill named ${name}.`)
-        return skillDetail(hit, doc, api())
-      }),
-    [name],
-  )
+  const read = useRead(() => loadSkill(name), [name])
+  return <View read={read} />
+}
+
+export function TemplatePage() {
+  const { slug = '' } = useParams()
+  const read = useRead(() => loadTemplate(slug), [slug])
+  return <View read={read} />
+}
+
+export function PersonaPage() {
+  const { slug = '' } = useParams()
+  const read = useRead(() => loadPersona(slug), [slug])
   return <View read={read} />
 }
 
 export function McpPage() {
   const { id = '' } = useParams()
   const session = useSession()
-  const read = useRead(session.loading ? null : () => mcpListing(id).then(mcpDetail), [id, session.loading, session.signedIn])
-  if (!session.loading && (!session.signedIn || needsSession(read.status))) {
+  const fallback = findDefaultMcp(id)
+  const read = useRead(
+    session.loading
+      ? null
+      : () => {
+          if (!session.signedIn && fallback) return Promise.resolve(mcpDetail(fallback))
+          return loadMcp(id)
+        },
+    [id, session.loading, session.signedIn],
+  )
+  if (!session.loading && !fallback && (!session.signedIn || needsSession(read.status))) {
     return (
       <Column gap="$4" py="$8">
         <Eyebrow>MCP server</Eyebrow>
@@ -65,7 +119,7 @@ export function McpPage() {
         </Text>
         <XStack>
           <Act loud onPress={session.signIn}>
-            Sign in with Hanzo
+            Try Hanzo
           </Act>
         </XStack>
       </Column>
@@ -83,7 +137,177 @@ function View({ read }: { read: Read<Detail> }) {
     )
   }
   if (!read.it) return <Nothing says="Loading…" />
-  return <Shown d={read.it} />
+  return read.it.item.expert ? <Person d={read.it} expert={read.it.item.expert} /> : <Shown d={read.it} />
+}
+
+/**
+ * The caller's own listing, re-read from GitHub on request: what GitHub says now,
+ * against what the listing says, change by change, and nothing is written until the
+ * person saves. GitHub is the account IAM linked; with none linked, the press
+ * connects one.
+ */
+function Refresh({ own }: { own: Listing }) {
+  const go = useNavigate()
+  const { busy, failed, run } = useRun()
+  const [found, setFound] = useState<{ changes: Change[]; next: ReturnType<typeof fill> } | null>(null)
+
+  const read = () =>
+    void run(async () => {
+      const account = await github()
+      if (!account) return connect(GITHUB, window.location.pathname)
+      setFound(refresh(fill(own), await pull(account)))
+    })
+  const blocked = found ? check(found.next) : null
+  const save = () =>
+    void run(async () => {
+      if (!found) return
+      await updateListing(own.id, change(found.next))
+      setFound(null)
+      await go(0)
+    })
+
+  return (
+    <YStack gap="$3" data-refresh="">
+      <XStack gap="$2" flexWrap="wrap" items="center">
+        <Act disabled={busy} onPress={read}>
+          Refresh from GitHub
+        </Act>
+        <Refusal says={failed} />
+      </XStack>
+      {found ? (
+        <Panel gap="$3">
+          {found.changes.length ? (
+            found.changes.map((c) => (
+              <YStack key={c.field} gap="$1" data-change={c.field}>
+                <Text fontSize="$2" color="$quiet">
+                  {c.label}
+                </Text>
+                {c.before ? (
+                  <Text fontSize="$2" color="$quiet" textDecorationLine="line-through">
+                    {c.before}
+                  </Text>
+                ) : null}
+                <Text fontSize="$3" color="$ink">
+                  {c.after}
+                </Text>
+              </YStack>
+            ))
+          ) : (
+            <Text fontSize="$2" color="$soft">
+              Nothing has changed.
+            </Text>
+          )}
+          <XStack gap="$2" items="center" flexWrap="wrap">
+            {found.changes.length ? (
+              <Act loud disabled={busy || blocked !== null} onPress={save}>
+                Save
+              </Act>
+            ) : null}
+            <Act onPress={() => setFound(null)}>Cancel</Act>
+            {blocked ? (
+              <Text fontSize="$2" color="$quiet">
+                {blocked}
+              </Text>
+            ) : null}
+          </XStack>
+        </Panel>
+      ) : null}
+    </YStack>
+  )
+}
+
+/** The listing page's own mark of "this is yours": the platform's `self`, read from the caller's own listings. */
+function useOwn(listing: string | null): Listing | null {
+  const session = useSession()
+  const own = useRead(session.signedIn && listing ? () => ownListings().then((r) => mine(r.listings)) : null, [session.signedIn, session.org, listing])
+  return own.it && own.it.id === listing ? own.it : null
+}
+
+/** An expert's page: who they are, what they ask, and the one action, Book, which starts the same job as hiring an agent. */
+function Person({ d, expert }: { d: Detail; expert: Profile }) {
+  const go = useNavigate()
+  const listing = d.get.how === 'checkout' ? d.get.listing : null
+  const own = useOwn(listing)
+  const facts: [string, string][] = [
+    ['Languages', expert.languages.map(language).join(', ')],
+    ['Time zone', expert.timezone],
+    ...(expert.availability ? ([['Availability', expert.availability]] as [string, string][]) : []),
+  ]
+  return (
+    <Column gap="$6" py="$8">
+      <XStack gap="$6" flexWrap="wrap" items="flex-start">
+        <YStack gap="$3" flex={2} minW={300}>
+          <Eyebrow>Expert</Eyebrow>
+          <XStack items="center" gap="$3" flexWrap="wrap">
+            <Text render="h1" fontSize="$9" fontWeight="600" color="$ink">
+              {d.item.title}
+            </Text>
+            {expert.verified ? <Verified /> : null}
+          </XStack>
+          <XStack gap="$1" flexWrap="wrap">
+            {expert.areas.map((a) => (
+              <Chip key={a}>{areaLabel(a)}</Chip>
+            ))}
+          </XStack>
+          {expert.areas.includes('freelance') ? (
+            <Text fontSize="$2" color="$soft" data-freelance="">
+              {FREELANCE}
+            </Text>
+          ) : null}
+          {expert.reward ? <Record standing={expert.reward} /> : null}
+          <Strengths products={expert.products} top={expert.top} />
+          <Text fontSize="$3" color="$ink" whiteSpace="pre-wrap" data-body="">
+            {d.body || 'No description.'}
+          </Text>
+          {expert.skills?.length ? (
+            <XStack gap="$1" flexWrap="wrap" data-skills="">
+              {expert.skills.map((k) => (
+                <Chip key={k}>{k}</Chip>
+              ))}
+            </XStack>
+          ) : null}
+          {expert.links?.length ? (
+            <XStack gap="$2" flexWrap="wrap" data-links="">
+              {expert.links.map((l) => (
+                <Go key={l} to={l}>
+                  {l.replace(/^https:\/\//, '')}
+                </Go>
+              ))}
+            </XStack>
+          ) : null}
+          {own ? <Refresh own={own} /> : null}
+        </YStack>
+        <YStack gap="$4" flex={1} minW={280}>
+          <Panel>
+            <Text fontSize="$6" fontWeight="600" color="$ink" data-fees="">
+              {fees(expert).join(' · ')}
+            </Text>
+            {listing ? (
+              <Act loud onPress={() => go(`/checkout/${encodeURIComponent(listing)}`)}>
+                Book
+              </Act>
+            ) : null}
+          </Panel>
+          <Panel gap="$2">
+            {facts.map(([k, v]) => (
+              <XStack key={k} justify="space-between" gap="$3">
+                <Text fontSize="$2" color="$quiet">
+                  {k}
+                </Text>
+                <Text fontSize="$2" color="$ink" text="right">
+                  {v}
+                </Text>
+              </XStack>
+            ))}
+          </Panel>
+        </YStack>
+      </XStack>
+
+      <Section title="Reputation">
+        <Rep d={d} />
+      </Section>
+    </Column>
+  )
 }
 
 function Shown({ d }: { d: Detail }) {
@@ -125,6 +349,48 @@ function Shown({ d }: { d: Detail }) {
         </YStack>
       </XStack>
 
+      {d.capability ? (
+        <Section
+          title="Kai Shared Latent Space & Evaluation Gate"
+          says="Trained over the frozen Kai mmBERT 307M foundation and verified for zero out-of-distribution drift."
+        >
+          <XStack gap="$3" flexWrap="wrap">
+            <Count of={`+${d.capability.repairs}`} says="Repairs" />
+            <Count of={d.capability.damage} says="Damage" />
+            <Count of={d.capability.oodMoved} says="OOD moved" />
+            <Count of={`+${d.capability.latencyUs} µs`} says="Latency" />
+          </XStack>
+          <Panel gap="$2">
+            <XStack justify="space-between" gap="$3" flexWrap="wrap">
+              <Text fontSize="$2" color="$quiet">
+                Representation SHA-256
+              </Text>
+              <Text fontSize="$2" color="$ink" fontFamily="$mono">
+                {d.capability.representation}
+              </Text>
+            </XStack>
+            <XStack justify="space-between" gap="$3" flexWrap="wrap">
+              <Text fontSize="$2" color="$quiet">
+                Form
+              </Text>
+              <Text fontSize="$2" color="$ink">
+                {d.capability.form}{d.capability.rank ? ` (rank ${d.capability.rank})` : ''}
+              </Text>
+            </XStack>
+            {d.capability.labels.length ? (
+              <XStack justify="space-between" gap="$3" flexWrap="wrap">
+                <Text fontSize="$2" color="$quiet">
+                  Options / Labels
+                </Text>
+                <Text fontSize="$2" color="$ink" fontFamily="$mono">
+                  {d.capability.labels.join(', ')}
+                </Text>
+              </XStack>
+            ) : null}
+          </Panel>
+        </Section>
+      ) : null}
+
       <Section title="Reputation">
         <Rep d={d} />
       </Section>
@@ -139,6 +405,18 @@ function Shown({ d }: { d: Detail }) {
         </XStack>
         {d.cli ? <Code label="CLI" line={d.cli} /> : null}
         {call ? <Code label="MCP tool (hanzo-mcp)" line={call} /> : null}
+      </Section>
+
+      <Section
+        title="Contribute & Earn (OSS + x402)"
+        says="Every Hanzo agent, persona, Kai capability, skill, MCP server, and template is open-source or monetizable. Fork or improve it on GitHub, train new capabilities in Hanzo Platform, or publish your own on Hanzo Market and get paid automatically over x402 whenever people or agents use your work."
+      >
+        <XStack gap="$2" flexWrap="wrap">
+          <Go to="/sell">Publish & earn on Hanzo Market</Go>
+          <Go to="https://platform.hanzo.ai/capabilities/corrections">Train a Kai capability</Go>
+          <Go to="https://github.com/hanzoai">Contribute on GitHub</Go>
+          <Go to="https://docs.hanzo.ai/docs/marketplace">Creator payout docs</Go>
+        </XStack>
       </Section>
     </Column>
   )

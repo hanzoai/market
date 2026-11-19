@@ -4,9 +4,13 @@ import { Callback } from '~/callback'
 import { Browse } from '~/pages/browse'
 import { Checkout } from '~/pages/checkout'
 import { Earnings } from '~/pages/earnings'
-import { AppPage, ListingPage, McpPage, SkillPage } from '~/pages/item'
+import { Experts } from '~/pages/experts'
+import { AppPage, ListingPage, McpPage, PersonaPage, SkillPage, TemplatePage } from '~/pages/item'
 import { JobPage, Jobs } from '~/pages/jobs'
+import { Join } from '~/pages/join'
+import { Login } from '~/login'
 import { ListingForm, Listings } from '~/pages/listings'
+import { Missing } from '~/pages/missing'
 import { Setup } from '~/pages/setup'
 import { Root } from '~/root'
 
@@ -16,16 +20,25 @@ export const routes = [
     children: [
       { path: '/', element: <Browse /> },
       { path: '/agents', element: <Browse kind="agent" /> },
+      { path: '/experts', element: <Experts /> },
+      { path: '/experts/join', element: <Join /> },
+      { path: '/experts/:id', element: <ListingPage /> },
       { path: '/personas', element: <Browse kind="persona" /> },
+      { path: '/capabilities', element: <Browse kind="capability" /> },
       { path: '/apps', element: <Browse kind="app" /> },
       { path: '/skills', element: <Browse kind="skill" /> },
       { path: '/mcp', element: <Browse kind="mcp" /> },
       { path: '/tools', element: <Browse kind="tool" /> },
+      { path: '/templates', element: <Browse kind="template" /> },
       { path: '/auth/callback', element: <Callback /> },
+      { path: '/login', element: <Login /> },
+      { path: '/signup', element: <Login mode="signup" /> },
       { path: '/l/:id', element: <ListingPage /> },
+      { path: '/personas/:slug', element: <PersonaPage /> },
       { path: '/apps/:org/:name', element: <AppPage /> },
       { path: '/skills/:name', element: <SkillPage /> },
       { path: '/mcp/:id', element: <McpPage /> },
+      { path: '/templates/:slug', element: <TemplatePage /> },
       { path: '/checkout/:id', element: <Checkout /> },
       { path: '/jobs', element: <Jobs role="buyer" /> },
       { path: '/jobs/:id', element: <JobPage /> },
@@ -35,7 +48,7 @@ export const routes = [
       { path: '/sell/listings/:id', element: <ListingForm /> },
       { path: '/sell/jobs', element: <Jobs role="seller" /> },
       { path: '/sell/earnings', element: <Earnings /> },
-      { path: '*', element: <Browse /> },
+      { path: '*', element: <Missing /> },
     ],
   },
 ]

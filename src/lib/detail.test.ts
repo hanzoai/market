@@ -1,4 +1,4 @@
-import { appDetail, docs, listingDetail, mcpCall, mcpDetail, skillDetail } from '~/lib/detail'
+import { appDetail, docs, listingDetail, mcpCall, mcpDetail, personaDetail, skillDetail, templateDetail } from '~/lib/detail'
 import type { ShopListing } from '~/lib/market'
 
 const rep = { rating: null, reviews: 0, installs: 0, jobs: { completed: 0, disputed: 0 } }
@@ -35,9 +35,55 @@ describe('listing detail', () => {
     }
   })
 
-  it('sells a priced platform tool per call and installs a free one directly', () => {
+  it('sells a priced platform tool or capability per call/fire and installs a free one directly', () => {
     expect(listingDetail(tool).get).toEqual({ how: 'checkout', listing: 'lst_1', hire: false })
     expect(listingDetail({ ...tool, price: '0' }).get).toEqual({ how: 'install', tool: 'geocode' })
+
+    const capListing: ShopListing = {
+      ...base,
+      id: 'lst_cap_1',
+      kind: 'capability',
+      tool: 'fraud-shield',
+      price: '0',
+      capability: {
+        sha256: 'a'.repeat(64),
+        baseSha256: 'b'.repeat(64),
+        representation: '17e3cf68617d2bf5915b6d88513c8a1ca89eb82069a3159b3eb22e3d0bf65b6c',
+        form: 'adapter',
+        rank: 0,
+        bytes: 18432,
+        questionKey: 'fraud_shield',
+        questionType: 'choice',
+        labels: ['legit', 'fraud'],
+        repairs: 42,
+        damage: 0,
+        fireRate: 1,
+        specificity: 1,
+        oodMoved: 0,
+        latencyUs: 7,
+        license: 'Apache-2.0',
+      },
+      links: { cli: 'hanzo marketplace install --tool fraud-shield', mcp: { tool: 'marketplace', op: 'post_marketplace_install' } },
+    }
+    const freeCap = listingDetail(capListing)
+    expect(freeCap.get).toEqual({ how: 'install', tool: 'fraud-shield' })
+    expect(freeCap.links[0]).toEqual({
+      label: 'Download .tar weights',
+      href: 'https://api.hanzo.ai/v1/marketplace/shop/lst_cap_1/weights',
+    })
+    expect(freeCap.facts).toContainEqual(['Capability', 'fraud-shield'])
+    expect(freeCap.facts).toContainEqual(['Representation', '17e3cf68617d2bf5…'])
+    expect(freeCap.facts).toContainEqual(['Verified eval', '+42 repairs / -0 damage / OOD 0'])
+    expect(freeCap.facts).toContainEqual(['License', 'Apache-2.0'])
+
+    const pricedCap = listingDetail({
+      ...capListing,
+      price: '0.002',
+      capability: { ...capListing.capability!, license: 'commercial' },
+    })
+    expect(pricedCap.get).toEqual({ how: 'checkout', listing: 'lst_cap_1', hire: false })
+    expect(pricedCap.links.map((l) => l.label)).toEqual(['Documentation'])
+    expect(pricedCap.facts).toContainEqual(['License', 'commercial'])
   })
 
   it('points at docs, and at the command and MCP operation the platform names', () => {
@@ -54,6 +100,22 @@ describe('listing detail', () => {
     expect(listingDetail({ ...base, seller: { ...base.seller, documented: true } }).facts).toContainEqual(['Tax form', 'Certified'])
     expect(docs('//evil.example/x')).toBeNull()
     expect(docs(undefined)).toBeNull()
+  })
+
+  it('hires an expert through checkout, and states them instead of a tool', () => {
+    const person: ShopListing = {
+      ...base,
+      kind: 'expert',
+      tool: '',
+      title: 'Ada Lovelace',
+      price: '0',
+      expert: { rate: '150', areas: ['base'], languages: ['en'], timezone: 'UTC', availability: '', verified: false },
+    }
+    const d = listingDetail(person)
+    expect(d.get).toEqual({ how: 'checkout', listing: 'lst_1', hire: true })
+    expect(d.item).toMatchObject({ kind: 'expert', href: '/experts/lst_1', price: '$150.00/hr' })
+    expect(d.facts.map(([k]) => k)).toEqual(['Seller', 'Tax form', 'Areas', 'Rate', 'Languages', 'Time zone', 'Verified', 'Listed'])
+    expect(d.facts).not.toContainEqual(['Sells', ''])
   })
 
   it('opens an app where it lives', () => {
@@ -97,5 +159,23 @@ describe('listing detail', () => {
     expect(m.facts).toContainEqual(['Official', 'Yes'])
     expect(m.links.map((l) => l.label)).toEqual(['Website', 'Source', 'Documentation'])
     expect(mcpCall({ ...m, mcp: null })).toBeNull()
+  })
+
+  it('builds detail views for personas and templates', () => {
+    const p = personaDetail('ada', 'Custom markdown prompt')
+    expect(p.item.kind).toBe('persona')
+    expect(p.body).toBe('Custom markdown prompt')
+    // The CLI has no persona flag, so the page names no command, and no reputation it has not earned.
+    expect(p.cli).toBeNull()
+    expect(p.mcp).toBeNull()
+    expect(p.reputation).toBeNull()
+    expect(personaDetail('ada').body).toContain('mathematician')
+    expect(() => personaDetail('no-such-persona')).toThrow(/No persona named/)
+
+    const t = templateDetail('saas-landing')
+    expect(t.item.kind).toBe('template')
+    expect(t.cli).toBeNull()
+    expect(t.reputation).toBeNull()
+    expect(() => templateDetail('no-such-template')).toThrow(/No template named/)
   })
 })

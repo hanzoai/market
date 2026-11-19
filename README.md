@@ -1,21 +1,34 @@
 # hanzo.market
 
 The Hanzo marketplace: one catalog of agents, apps, skills and MCP servers, for
-the people who buy them and the organizations that sell them.
+the people who buy them, the organizations that sell them, and the experts who
+can be booked.
 
 It is a static storefront. `vite build` writes `dist/`; the site lane in
 [hanzoai/ci](https://github.com/hanzoai/ci) publishes it to the sites plane, and
 the edge serves it at https://hanzo.market. There is no server in this repo:
-every read and write is an api.hanzo.ai `/v1` operation, and sign-in is Hanzo
-IAM (hanzo.id, authorization code + PKCE) through `@hanzo/iam`.
+every read and write is an api.hanzo.ai `/v1` operation. The storefront is
+public; signing in is Hanzo IAM on hanzo.ai's page: `/login` and `/signup` leave
+for https://hanzo.ai/login (or /signup) with this site's own authorize request
+(client `hanzo-market`, code + PKCE through `@hanzo/iam`), and the code comes
+back to `/auth/callback`. Sign-out hands the tokens back and ends the session
+through hanzo.id, back to the home page. Our stream, the ad tags and consent
+are `@hanzo/event` (`src/analytics.tsx`): the tags are the project's tag set in
+cloud, loaded only as consent allows.
 
 ## Buyers
 
-- Browse and search one catalog, faceted by type: `/`, `/agents`, `/apps`,
-  `/skills`, `/mcp`.
+- Browse and search one catalog, faceted by type: `/`, `/agents`, `/experts`,
+  `/apps`, `/skills`, `/mcp`.
 - A listing page (`/l/:id`, `/apps/:org/:name`, `/skills/:name`, `/mcp/:id`)
   shows reputation, how to get it, and the same action as a docs link, a
   `hanzo` CLI line and a hanzo-mcp tool call.
+- Experts (`/experts`): people, not software. The category lists every expert
+  (the shop read 200 at a time until its total), filtered by area (`area=`) and
+  searched. An expert's page (`/experts/:id`, also `/l/:id` for that kind) shows
+  their areas, rate and/or fixed price, languages, time zone, availability and
+  reviews, and **Book** opens the same checkout as hiring an agent: the amount
+  opens at the fixed price, else one hour of the rate.
 - Checkout (`/checkout/:id?rail=x402|escrow`) runs clearance first and says what
   it needs in plain words, including backup withholding; then it installs for
   per-call payment over x402, or funds an on-chain escrow job.
@@ -24,6 +37,13 @@ IAM (hanzo.id, authorization code + PKCE) through `@hanzo/iam`.
 
 ## Sellers
 
+- `/experts/join`: any signed-in member lists themself as an expert (`kind:
+  "expert"`, no `tool`), or edits the listing the platform marks as theirs
+  (`expert.self`; a colleague's listing in the same org is not): one per person,
+  so a second create answers 409. A positive rate or price needs the org's payout
+  wallet, chosen as `/sell/listings` chooses it. Signed out, it goes through
+  `/login` and returns to the form. `verified` is the platform staff's word and
+  is read-only here.
 - `/sell`: the organization as principal — identity verification, W-9 or W-8,
   payout wallet.
 - `/sell/listings`: create and edit listings of each type from the org's own

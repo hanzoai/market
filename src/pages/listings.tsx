@@ -17,6 +17,7 @@ import {
   authorSkill,
   connectMcp,
   mcpServers,
+  ownCapabilities,
   ownListings,
   publish,
   unpublish,
@@ -24,6 +25,7 @@ import {
   wallets,
   type Kind,
   type Listing,
+  type Wallet,
 } from '~/lib/market'
 import { each, free, valid } from '~/lib/money'
 import { useRead, useRun, type Read } from '~/lib/read'
@@ -86,11 +88,12 @@ export function ListingForm() {
 }
 
 /** What an org lists: everything but the platform's per-call tools. */
-const SOLD: Kind[] = ['agent', 'persona', 'app', 'skill', 'mcp']
+const SOLD: Kind[] = ['agent', 'persona', 'capability', 'app', 'skill', 'mcp']
 
 /** What the org already has of `kind`, as (tool name, label) pairs. */
 async function inventory(kind: Kind, org: string | null): Promise<{ tool: string; label: string }[]> {
   if (kind === 'agent' || kind === 'persona') return (await agents()).agents.map((a) => ({ tool: a.name, label: a.name }))
+  if (kind === 'capability') return (await ownCapabilities()).data.map((c) => ({ tool: c.name, label: `${c.name} · v${c.installed || c.version}` }))
   if (kind === 'skill') return (await authoredSkills()).skills.map((s) => ({ tool: s.name, label: s.name }))
   if (kind === 'mcp') return (await mcpServers()).servers.map((s) => ({ tool: s.name, label: `${s.name} · ${s.url}` }))
   if (!org) return []
@@ -111,6 +114,7 @@ function Form() {
   const [category, setCategory] = useState('')
   const [price, setPrice] = useState('0')
   const [recipient, setRecipient] = useState('')
+  const [license, setLicense] = useState<'MIT' | 'Apache-2.0'>('Apache-2.0')
   const [open, setOpen] = useState(true)
   const [docs, setDocs] = useState('')
   const [made, setMade] = useState<Listing | null>(null)
@@ -125,6 +129,7 @@ function Form() {
     setCategory(l.category)
     setPrice(l.price || '0')
     setRecipient(l.recipient)
+    if (l.capability?.license === 'MIT' || l.capability?.license === 'Apache-2.0') setLicense(l.capability.license)
     setOpen(l.public)
     setDocs(l.docs ?? '')
   }, [existing.it])
@@ -149,7 +154,15 @@ function Form() {
         public: open,
         docs: docs.trim() || undefined,
       }
-      const saved = editing && id ? await updateListing(id, fields) : await publish({ ...fields, tool: tool.trim(), kind })
+      const saved =
+        editing && id
+          ? await updateListing(id, fields)
+          : await publish({
+              ...fields,
+              tool: tool.trim(),
+              kind,
+              capability: kind === 'capability' ? { license: priced ? 'commercial' : license } : undefined,
+            })
       setMade(saved)
     })
 
@@ -208,32 +221,28 @@ function Form() {
           <Words label="Description" value={description} set={setDescription} hint="What it does, what it needs, what it returns." />
           <Fields>
             <Field
-              label="Price per job (USD)"
+              label={kind === 'capability' ? 'Price per fire (USD)' : 'Price per job (USD)'}
               value={price}
               set={setPrice}
               name="price"
-              help="What a job is offered at; the buyer can name another amount at checkout. 0 lists it without a price."
+              help={
+                kind === 'capability'
+                  ? '0 publishes open-source downloadable weights (Apache-2.0 / MIT). A positive price keeps weights sealed and pays your wallet over x402 per fire.'
+                  : 'What a job is offered at; the buyer can name another amount at checkout. 0 lists it without a price.'
+              }
             />
-            {priced ? (
-              mine.it?.wallets.length ? (
-                <Choice
-                  label="Paid into"
-                  value={payTo}
-                  set={setRecipient}
-                  of={mine.it.wallets.map((w) => ({ value: w.id, label: `${w.name} · ${w.chain}` }))}
-                />
-              ) : (
-                <YStack gap="$2" flex={1} minW={200}>
-                  <Text fontSize="$2" color="$soft">
-                    Paid into
-                  </Text>
-                  <Text fontSize="$2" color="$quiet">
-                    A priced listing needs a payout wallet.
-                  </Text>
-                  <Go to="/sell">Create one</Go>
-                </YStack>
-              )
+            {kind === 'capability' && !priced ? (
+              <Choice
+                label="Open-source license"
+                value={license}
+                set={setLicense}
+                of={[
+                  { value: 'Apache-2.0', label: 'Apache-2.0 (eligible for upstream Kai)' },
+                  { value: 'MIT', label: 'MIT (eligible for upstream Kai)' },
+                ]}
+              />
             ) : null}
+            {priced ? <Payout wallets={mine.it?.wallets ?? []} value={payTo} set={setRecipient} /> : null}
           </Fields>
           <Field label="Documentation link (optional)" value={docs} set={setDocs} hint="https://docs.…" name="docs" />
           <Tick label="Public — list it in the catalog" checked={open} set={setOpen} />
@@ -250,6 +259,22 @@ function Form() {
         </Panel>
       </Section>
     </Page>
+  )
+}
+
+/** The wallet a priced listing is paid into: the org's own, or a way to make one. */
+export function Payout({ wallets: own, value, set }: { wallets: Wallet[]; value: string; set: (id: string) => void }) {
+  if (own.length) return <Choice label="Paid into" value={value} set={set} of={own.map((w) => ({ value: w.id, label: `${w.name} · ${w.chain}` }))} />
+  return (
+    <YStack gap="$2" flex={1} minW={200}>
+      <Text fontSize="$2" color="$soft">
+        Paid into
+      </Text>
+      <Text fontSize="$2" color="$quiet">
+        A priced listing needs a payout wallet.
+      </Text>
+      <Go to="/sell">Create one</Go>
+    </YStack>
   )
 }
 
@@ -332,6 +357,7 @@ function Source({
         </YStack>
       ) : null}
 
+      {kind === 'capability' ? <Go to="https://platform.hanzo.ai/capabilities/corrections">Train a capability in Hanzo Platform</Go> : null}
       {(kind === 'agent' || kind === 'persona') && have.it && !list.length ? <Go to="https://console.hanzo.ai/agents">Create an agent in the console</Go> : null}
       <Refusal says={failed} />
     </YStack>
