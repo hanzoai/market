@@ -136,6 +136,19 @@ function Inner() {
       <Section title="Payout wallet" says="Sales settle into a wallet your organization holds: per call over x402, and for a job when the buyer releases it. The wallet signs once to prove it is yours; jobs are paid into it.">
         <Payout org={session.org ?? ''} wallets={mine} standing={standing} />
       </Section>
+
+      <Section
+        title="Sensei credentials"
+        says="L1–L3 credentials from Hanzo University are free forever; L3+ unlocks curated human specialist escalations on Sensei Group backed by the same organization clearance and payout wallet."
+      >
+        <Panel>
+          <XStack gap="$2" flexWrap="wrap" data-continuity="sensei-setup">
+            <Go to="https://hanzo.ai/university">Hanzo University (L1–L9)</Go>
+            <Go to="https://sensei.group#certification-progress">Verify L3+ Eligibility on Sensei Group</Go>
+            <Go to="/sell/jobs">Open Jobs Inbox</Go>
+          </XStack>
+        </Panel>
+      </Section>
     </Page>
   )
 }

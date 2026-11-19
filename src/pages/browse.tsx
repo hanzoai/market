@@ -192,7 +192,6 @@ export function Browse({ kind }: { kind?: Kind }) {
           </XStack>
         ) : null}
         <Refusal says={reading.failed} />
-
         <Panel gap="$3">
           <XStack justify="space-between" items="center" flexWrap="wrap" gap="$4">
             <YStack gap="$1" flex={1} minW={260}>
@@ -214,6 +213,26 @@ export function Browse({ kind }: { kind?: Kind }) {
             </XStack>
           </XStack>
         </Panel>
+        <YStack pt="$4" data-continuity="ecosystem">
+          <Panel>
+            <XStack items="center" justify="space-between" flexWrap="wrap" gap="$3">
+              <YStack gap="$1" flex={1} minW={240}>
+                <Text fontSize="$3" fontWeight="600" color="$ink">
+                  From CLI to L3–L9 Certified Sensei &amp; Escrowed Work
+                </Text>
+                <Text fontSize="$2" color="$soft">
+                  Install the CLI at hanzo.sh, earn free L1–L3 credentials at Hanzo University, and unlock verified human Sensei work on Sensei Group.
+                </Text>
+              </YStack>
+              <XStack gap="$2" flexWrap="wrap">
+                <Go to="https://hanzo.ai/university">Hanzo University (L1–L9)</Go>
+                <Go to="https://sensei.group">Sensei Group (L3+)</Go>
+                <Go to="https://hanzo.sh">Install CLI</Go>
+                <Go to="https://hanzo.ai/bounty">Open Bounties</Go>
+              </XStack>
+            </XStack>
+          </Panel>
+        </YStack>
       </Column>
     </YStack>
   )
