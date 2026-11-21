@@ -1,5 +1,7 @@
 # hanzo.market
 
+[![Open in Hanzo](https://hanzo.app/badges/open-in-hanzo.svg)](https://hanzo.app/dev/open?repo=github.com/hanzoai/market&ref=main&action=open) [![Edit with Hanzo](https://hanzo.app/badges/edit-with-hanzo.svg)](https://hanzo.app/dev/open?repo=github.com/hanzoai/market&ref=main&action=edit) [![Deploy with Hanzo](https://hanzo.app/badges/deploy-with-hanzo.svg)](https://hanzo.app/dev/open?repo=github.com/hanzoai/market&ref=main&action=deploy)
+
 The Hanzo marketplace: one catalog of agents, apps, skills and MCP servers, for
 the people who buy them, the organizations that sell them, and the experts who
 can be booked.
